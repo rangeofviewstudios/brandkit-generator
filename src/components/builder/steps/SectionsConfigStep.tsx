@@ -30,7 +30,7 @@ export default function SectionsConfigStep() {
       <div>
         <p className="text-[10px] tracking-[0.25em] uppercase text-[#D0BEA5]/60 mb-2 font-medium">Step 07</p>
         <h2 className="text-2xl font-light tracking-tight mb-1 text-[#FFF4E3]"><span className="font-semibold">Sections</span></h2>
-        <p className="text-sm text-[#FFF4E3]/50">
+        <p className="text-sm text-[#FFF4E3]/65">
           Choose which sections to include and their order.
         </p>
       </div>

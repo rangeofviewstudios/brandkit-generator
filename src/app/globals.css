@@ -208,3 +208,22 @@
 .gold-pulse {
   animation: gold-pulse 3s ease-in-out infinite;
 }
+
+/* ── Reduced motion: kill non-essential animation + transitions ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .cta-shine:hover::after {
+    animation: none;
+  }
+  .gold-pulse {
+    animation: none;
+    opacity: 0.8;
+  }
+}

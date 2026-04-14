@@ -2,12 +2,19 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { v4 as uuid } from "uuid";
-import chroma from "chroma-js";
 import Wheel from "@uiw/react-color-wheel";
 import { hsvaToHex, hexToHsva, type HsvaColor } from "@uiw/color-convert";
 import { motion } from "framer-motion";
+import { AlertTriangle } from "lucide-react";
 import { useBrandKitStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import {
+  hexToOklch,
+  oklchToHex,
+  getContrastRatio,
+  wcagGrade,
+  type OklchColor,
+} from "@/lib/utils/colorUtils";
 
 // ──────────────────────────────────────────────────────────────
 // Types
@@ -18,60 +25,119 @@ type Harmony =
   | "monochromatic"
   | "analogous"
   | "triadic"
-  | "tetradic";
+  | "tetradic"
+  | "split-complementary";
+
+type PaletteSwatch = { hex: string; gamutClipped: boolean };
+
+const clamp = (n: number, lo: number, hi: number) =>
+  Math.max(lo, Math.min(hi, n));
+const mod360 = (h: number) => ((h % 360) + 360) % 360;
 
 // ──────────────────────────────────────────────────────────────
-// Harmony generators — each returns 5 colors
+// OKLCH-based harmony generator — returns role-based swatches
 // ──────────────────────────────────────────────────────────────
-function generatePalette(baseHex: string, harmony: Harmony): string[] {
+function buildRoles(baseOk: OklchColor): {
+  primary: OklchColor;
+  secondary: OklchColor;
+  tertiary: OklchColor;
+  neutral: OklchColor;
+} {
+  const primary: OklchColor = {
+    l: clamp(baseOk.l, 0.42, 0.58),
+    c: clamp(baseOk.c, 0.12, 0.2),
+    h: baseOk.h,
+  };
+  const secondary: OklchColor = {
+    l: Math.min(primary.l + 0.18, 0.85),
+    c: primary.c * 0.55,
+    h: baseOk.h,
+  };
+  const tertiary: OklchColor = {
+    l: primary.l + 0.08,
+    c: primary.c * 0.45,
+    h: mod360(baseOk.h + 30),
+  };
+  const neutral: OklchColor = {
+    l: 0.93,
+    c: 0.018,
+    h: baseOk.h,
+  };
+  return { primary, secondary, tertiary, neutral };
+}
+
+function generatePalette(
+  baseHex: string,
+  harmony: Harmony
+): PaletteSwatch[] {
   try {
-    const base = chroma(baseHex);
-    const [h, s, l] = base.hsl();
-    const safeH = isNaN(h) ? 0 : h;
+    const baseOk = hexToOklch(baseHex);
+    const { primary, secondary, tertiary, neutral } = buildRoles(baseOk);
 
+    const accentAt = (hueOffset: number, chromaBoost = 1.15): OklchColor => ({
+      l: primary.l + 0.05,
+      c: primary.c * chromaBoost,
+      h: mod360(baseOk.h + hueOffset),
+    });
+
+    let roles: OklchColor[];
     switch (harmony) {
-      case "complementary": {
-        const comp = chroma.hsl((safeH + 180) % 360, s, l);
-        return [
-          base.set("hsl.l", Math.max(l - 0.25, 0.08)).hex(),
-          base.hex(),
-          chroma.mix(base, comp, 0.5, "lab").hex(),
-          comp.hex(),
-          comp.set("hsl.l", Math.min(l + 0.25, 0.92)).hex(),
+      case "complementary":
+        roles = [primary, secondary, tertiary, accentAt(180), neutral];
+        break;
+      case "monochromatic":
+        // Five-step monochromatic ramp at base hue
+        roles = [0.3, 0.45, 0.6, 0.75, 0.9].map((l) => ({
+          l,
+          c: clamp(baseOk.c, 0.04, 0.18) * (l > 0.85 ? 0.25 : 1),
+          h: baseOk.h,
+        }));
+        break;
+      case "analogous":
+        roles = [-60, -30, 0, 30, 60].map((offset) => ({
+          l: clamp(baseOk.l, 0.45, 0.7),
+          c: clamp(baseOk.c, 0.08, 0.18),
+          h: mod360(baseOk.h + offset),
+        }));
+        break;
+      case "triadic":
+        roles = [
+          primary,
+          secondary,
+          accentAt(120, 1.0),
+          accentAt(240, 1.0),
+          neutral,
         ];
-      }
-      case "monochromatic": {
-        return [0.15, 0.3, 0.5, 0.7, 0.85].map((lightness) =>
-          chroma.hsl(safeH, s, lightness).hex()
-        );
-      }
-      case "analogous": {
-        return [-60, -30, 0, 30, 60].map((offset) =>
-          chroma.hsl((safeH + offset + 360) % 360, s, l).hex()
-        );
-      }
-      case "triadic": {
-        const c2 = chroma.hsl((safeH + 120) % 360, s, l);
-        const c3 = chroma.hsl((safeH + 240) % 360, s, l);
-        return [
-          base.set("hsl.l", Math.max(l - 0.2, 0.1)).hex(),
-          base.hex(),
-          c2.hex(),
-          c3.hex(),
-          c3.set("hsl.l", Math.min(l + 0.2, 0.9)).hex(),
+        break;
+      case "tetradic":
+        roles = [
+          primary,
+          accentAt(90, 1.0),
+          neutral,
+          accentAt(180, 1.1),
+          accentAt(270, 1.0),
         ];
-      }
-      case "tetradic": {
-        const c1 = base;
-        const c2 = chroma.hsl((safeH + 90) % 360, s, l);
-        const c3 = chroma.hsl((safeH + 180) % 360, s, l);
-        const c4 = chroma.hsl((safeH + 270) % 360, s, l);
-        const neutral = chroma.hsl(safeH, s * 0.2, 0.5);
-        return [c1.hex(), c2.hex(), neutral.hex(), c3.hex(), c4.hex()];
-      }
+        break;
+      case "split-complementary":
+        // Split-complementary: ACCENT at +150°, ACCENT_2 at +210°
+        roles = [
+          primary,
+          secondary,
+          tertiary,
+          accentAt(150),
+          accentAt(210),
+          neutral,
+        ];
+        break;
     }
+
+    return roles.map((ok) => oklchToHex(ok));
   } catch {
-    return Array(5).fill("#000000");
+    const count = harmony === "split-complementary" ? 6 : 5;
+    return Array.from({ length: count }, () => ({
+      hex: "#000000",
+      gamutClipped: false,
+    }));
   }
 }
 
@@ -130,12 +196,34 @@ const HarmonyIcon = ({ type }: { type: Harmony }) => {
           <circle cx="18" cy="18" r="2.5" />
         </svg>
       );
+    case "split-complementary":
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="5" r="2.5" />
+          <circle cx="6" cy="18" r="2.5" />
+          <circle cx="18" cy="18" r="2.5" />
+          <line x1="12" y1="7.5" x2="8" y2="15.5" />
+          <line x1="12" y1="7.5" x2="16" y2="15.5" />
+        </svg>
+      );
   }
 };
 
-const ROLE_LABELS = ["Primary", "Secondary", "Tertiary", "Accent", "Neutral"];
+const ROLE_LABELS_5 = ["Primary", "Secondary", "Tertiary", "Accent", "Neutral"];
+const ROLE_LABELS_SPLIT = [
+  "Primary",
+  "Secondary",
+  "Tertiary",
+  "Accent",
+  "Accent 2",
+  "Neutral",
+];
+const getRoleLabels = (harmony: Harmony) =>
+  harmony === "split-complementary" ? ROLE_LABELS_SPLIT : ROLE_LABELS_5;
+
 const HARMONIES: { id: Harmony; label: string }[] = [
   { id: "complementary", label: "Complementary" },
+  { id: "split-complementary", label: "Split-Comp." },
   { id: "monochromatic", label: "Monochromatic" },
   { id: "analogous", label: "Analogous" },
   { id: "triadic", label: "Triadic" },
@@ -168,21 +256,24 @@ export default function ColorPaletteStep() {
 
   const syncToStore = useCallback(
     (colors: string[]) => {
+      const labels = getRoleLabels(harmony);
       const validColors = colors.filter((c) => /^#[0-9a-fA-F]{6}$/.test(c));
       const swatches = validColors.map((hex, i) => ({
         id: storeSwatches[i]?.id || uuid(),
-        name: ROLE_LABELS[i] || `Color ${i + 1}`,
+        name: labels[i] || `Color ${i + 1}`,
         hex,
-        role: ROLE_LABELS[i] || "Accent",
-        cssVariable: `--color-${(ROLE_LABELS[i] || `c${i + 1}`).toLowerCase()}`,
+        role: labels[i] || "Accent",
+        cssVariable: `--color-${(labels[i] || `c${i + 1}`)
+          .toLowerCase()
+          .replace(/\s+/g, "-")}`,
       }));
       reorderColors(swatches);
     },
-    [storeSwatches, reorderColors]
+    [storeSwatches, reorderColors, harmony]
   );
 
   useEffect(() => {
-    if (mode === "assisted") syncToStore(generated);
+    if (mode === "assisted") syncToStore(generated.map((s) => s.hex));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generated, mode]);
 
@@ -209,7 +300,12 @@ export default function ColorPaletteStep() {
     setManualColors(updated);
   };
 
-  const displaySwatches = mode === "assisted" ? generated : manualColors;
+  const displaySwatches: PaletteSwatch[] =
+    mode === "assisted"
+      ? generated
+      : manualColors.map((hex) => ({ hex, gamutClipped: false }));
+
+  const currentLabels = getRoleLabels(harmony);
 
   return (
     <div className="max-w-md space-y-7">
@@ -221,7 +317,7 @@ export default function ColorPaletteStep() {
         <h2 className="text-2xl font-light tracking-tight mb-1 text-[#FFF4E3]">
           Color <span className="font-semibold">Palette</span>
         </h2>
-        <p className="text-sm text-[#FFF4E3]/50">
+        <p className="text-sm text-[#FFF4E3]/65">
           Build a harmonious palette or define your own.
         </p>
       </div>
@@ -304,7 +400,7 @@ export default function ColorPaletteStep() {
             <p className="text-[10px] font-medium tracking-[0.2em] uppercase text-[#D0BEA5]/60 mb-3">
               Choose a harmony
             </p>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {HARMONIES.map((h) => (
                 <button
                   key={h.id}
@@ -333,37 +429,103 @@ export default function ColorPaletteStep() {
         <p className="text-[10px] font-medium tracking-[0.2em] uppercase text-[#D0BEA5]/60">
           {mode === "assisted" ? "Generated palette" : "Your colors"}
         </p>
-        <div className="grid grid-cols-5 gap-2.5">
-          {displaySwatches.map((color, i) => {
+        <div
+          className="grid gap-2.5"
+          style={{
+            gridTemplateColumns: `repeat(${displaySwatches.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {displaySwatches.map((swatch, i) => {
+            const color = swatch.hex;
             const isValid = /^#[0-9a-fA-F]{6}$/.test(color);
+
+            // WCAG: compare swatch against #FFF and #000, take the higher ratio
+            let badgeRatio = 0;
+            let badgeGrade: "AAA" | "AA" | "FAIL" = "FAIL";
+            if (isValid) {
+              const vsWhite = getContrastRatio(color, "#FFFFFF");
+              const vsBlack = getContrastRatio(color, "#000000");
+              badgeRatio = Math.max(vsWhite, vsBlack);
+              badgeGrade = wcagGrade(badgeRatio);
+            }
+            const passes = badgeGrade !== "FAIL";
+
             return (
               <div key={i} className="space-y-2 animate-in fade-in duration-300">
                 <div
                   className={cn(
-                    "w-full h-20 rounded-xl transition-all duration-300",
+                    "relative w-full h-20 rounded-xl transition-all duration-300",
                     isValid
                       ? "border border-[rgba(208,190,165,0.15)] shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,244,227,0.1)]"
                       : "border-2 border-dashed border-[rgba(208,190,165,0.18)] bg-[rgba(255,244,227,0.02)]"
                   )}
                   style={isValid ? { background: color } : {}}
-                />
-                <div className="text-center">
-                  <p className="text-[8px] font-medium tracking-[0.18em] uppercase text-[#D0BEA5]/50 mb-1">
-                    {ROLE_LABELS[i]}
+                >
+                  {swatch.gamutClipped && isValid && (
+                    <span
+                      title="This color was adjusted to fit sRGB display gamut"
+                      aria-label="This color was adjusted to fit sRGB display gamut"
+                      className="absolute top-1 right-1 flex items-center justify-center size-5 rounded-full bg-black/55 backdrop-blur-sm text-[#FFB547]"
+                    >
+                      <AlertTriangle className="size-3" />
+                    </span>
+                  )}
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-[8px] font-medium tracking-[0.18em] uppercase text-[#D0BEA5]/50">
+                    {currentLabels[i]}
                   </p>
                   {mode === "manual" ? (
-                    <input
-                      type="text"
-                      value={manualColors[i]}
-                      onChange={(e) => handleManualChange(i, e.target.value)}
-                      className="w-full h-7 px-1.5 rounded-md bg-[rgba(255,244,227,0.03)] border border-[rgba(208,190,165,0.12)] text-[10px] font-mono uppercase text-[#FFF4E3] text-center transition-all focus:outline-none focus:border-[rgba(208,190,165,0.55)] focus:ring-1 focus:ring-[rgba(208,190,165,0.18)]"
-                      placeholder="#______"
-                      maxLength={7}
-                    />
+                    (() => {
+                      const raw = manualColors[i] ?? "";
+                      const hasValue = raw.length > 0;
+                      const invalid = hasValue && !isValid;
+                      return (
+                        <>
+                          <input
+                            type="text"
+                            value={raw}
+                            onChange={(e) => handleManualChange(i, e.target.value)}
+                            aria-invalid={invalid}
+                            className={cn(
+                              "w-full h-7 px-1.5 rounded-md bg-[rgba(255,244,227,0.03)] border text-[10px] font-mono uppercase text-[#FFF4E3] text-center transition-all focus:outline-none",
+                              invalid
+                                ? "border-[rgba(220,120,100,0.5)] focus:border-[rgba(220,120,100,0.7)] focus:ring-1 focus:ring-[rgba(220,120,100,0.3)]"
+                                : "border-[rgba(208,190,165,0.12)] focus:border-[rgba(208,190,165,0.55)] focus:ring-1 focus:ring-[rgba(208,190,165,0.18)]"
+                            )}
+                            placeholder="#______"
+                            maxLength={7}
+                          />
+                          {invalid && (
+                            <span className="block text-[9px] text-[#E89178]/85 leading-tight">
+                              Invalid hex
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()
                   ) : (
                     <code className="block text-[10px] font-mono text-[#FFF4E3]/70 tracking-wide">
                       {color.toUpperCase()}
                     </code>
+                  )}
+                  {isValid && (
+                    <span
+                      title={`Best text contrast ${badgeRatio}:1 vs ${
+                        getContrastRatio(color, "#FFFFFF") >=
+                        getContrastRatio(color, "#000000")
+                          ? "white"
+                          : "black"
+                      }`}
+                      className={cn(
+                        "inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold leading-none tracking-wide",
+                        passes
+                          ? "bg-[rgba(168,200,150,0.18)] text-[#A8C896] border border-[rgba(168,200,150,0.35)]"
+                          : "bg-[rgba(220,120,100,0.15)] text-[#E89178] border border-[rgba(220,120,100,0.3)]"
+                      )}
+                    >
+                      {badgeRatio}:1 {badgeGrade}
+                    </span>
                   )}
                 </div>
               </div>

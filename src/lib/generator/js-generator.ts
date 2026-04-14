@@ -224,21 +224,34 @@ ${gradientLines}
   var navLinks = nav ? nav.querySelectorAll('a') : [];
 
   function onScroll() {
-    var scrollY = window.scrollY;
+    var scrollY = window.scrollY || window.pageYOffset;
     var showNav = scrollY > window.innerHeight * 0.6;
     if (nav) nav.classList.toggle('${navShowClass}', showNav);
     if (floatActions) floatActions.classList.toggle('show', showNav);
 
-    var activeIdx = -1;
-    var trigger = scrollY + window.innerHeight * 0.4;
+    // Pick the section whose top is closest to — but above — the viewport
+    // midline. Using getBoundingClientRect because offsetTop is relative to
+    // the offsetParent, which breaks inside positioned wrappers.
+    var activeIdx = 0;
+    var triggerY = window.innerHeight * 0.5;
     sections.forEach(function(sec, i) {
-      if (sec && sec.offsetTop <= trigger) activeIdx = i;
+      if (!sec) return;
+      var top = sec.getBoundingClientRect().top;
+      if (top <= triggerY) activeIdx = i;
     });
+    // Near the end of the document, force the last section active so the
+    // final dot lights up even when a short last section can't reach the
+    // trigger line (e.g. page ends before section top crosses midline).
+    var docBottom = document.documentElement.scrollHeight;
+    if (scrollY + window.innerHeight >= docBottom - 120) {
+      activeIdx = sections.length - 1;
+    }
     navLinks.forEach(function(link, i) {
       link.classList.toggle('active', i === activeIdx);
     });
   }
   window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
   onScroll();
 
   // ── Logo background toggle ──

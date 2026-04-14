@@ -7,6 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Star } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+function isValidGradientCss(value: string): boolean {
+  if (!value.trim()) return false;
+  if (typeof window === "undefined" || typeof CSS === "undefined") return true;
+  try {
+    return CSS.supports("background", value);
+  } catch {
+    return false;
+  }
+}
 
 export default function GradientsStep() {
   const gradients = useBrandKitStore((s) => s.data.gradients);
@@ -31,7 +42,7 @@ export default function GradientsStep() {
       <div>
         <p className="text-[10px] tracking-[0.25em] uppercase text-[#D0BEA5]/60 mb-2 font-medium">Step 05</p>
         <h2 className="text-2xl font-light tracking-tight mb-1 text-[#FFF4E3]"><span className="font-semibold">Gradients</span></h2>
-        <p className="text-sm text-[#FFF4E3]/50">
+        <p className="text-sm text-[#FFF4E3]/65">
           Define gradient styles. Paste the full CSS gradient value.
         </p>
       </div>
@@ -86,10 +97,23 @@ export default function GradientsStep() {
                 onChange={(e) =>
                   updateGradient(grad.id, { css: e.target.value })
                 }
-                className="font-mono text-xs resize-none"
+                aria-invalid={!isValidGradientCss(grad.css)}
+                className={cn(
+                  "font-mono text-xs resize-none",
+                  !isValidGradientCss(grad.css) &&
+                    "border-[rgba(220,120,100,0.5)] focus-visible:ring-[rgba(220,120,100,0.3)]"
+                )}
                 rows={2}
                 placeholder="linear-gradient(135deg, #color1, #color2)"
               />
+              {!isValidGradientCss(grad.css) && (
+                <p className="text-[10px] text-[#E89178]/85 leading-relaxed">
+                  Not a valid CSS background value. Try
+                  <code className="mx-1 px-1 py-0.5 rounded bg-[rgba(0,0,0,0.25)]">
+                    linear-gradient(135deg, #EA9A61, #42201C)
+                  </code>
+                </p>
+              )}
               <div className="flex items-center justify-between pt-1">
                 <label className="flex items-center gap-2 text-xs text-[#D0BEA5]/70 cursor-pointer">
                   <Switch

@@ -69,7 +69,7 @@ export default function BrandVoiceStep() {
       <div>
         <p className="text-[10px] tracking-[0.25em] uppercase text-[#D0BEA5]/60 mb-2 font-medium">Step 06</p>
         <h2 className="text-2xl font-light tracking-tight mb-1 text-[#FFF4E3]">Brand <span className="font-semibold">Voice</span></h2>
-        <p className="text-sm text-[#FFF4E3]/50">
+        <p className="text-sm text-[#FFF4E3]/65">
           Define voice pillars and tone guidelines.
         </p>
       </div>

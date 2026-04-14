@@ -151,6 +151,9 @@ interface BrandKitStore {
   setTemplate: (template: TemplateId) => void;
   setStep: (step: number) => void;
   reset: () => void;
+  loadSample: (
+    partial: Partial<Pick<BrandKitData, "brandInfo" | "colors" | "gradients" | "voice">>
+  ) => void;
 }
 
 export const useBrandKitStore = create<BrandKitStore>()(
@@ -265,6 +268,15 @@ export const useBrandKitStore = create<BrandKitStore>()(
       set((state) => {
         state.data = DEFAULT_DATA;
         state.currentStep = 0;
+      }),
+
+    loadSample: (partial) =>
+      set((state) => {
+        if (partial.brandInfo)
+          Object.assign(state.data.brandInfo, partial.brandInfo);
+        if (partial.colors) state.data.colors = partial.colors;
+        if (partial.gradients) state.data.gradients = partial.gradients;
+        if (partial.voice) state.data.voice = partial.voice;
       }),
   }))
 );

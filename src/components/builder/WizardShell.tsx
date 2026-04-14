@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBrandKitStore } from "@/lib/store";
 
 // Custom Check icon — perfectly centered in its viewBox so it sits
 // optically in the middle of a small circle without edge-hugging
@@ -44,6 +45,7 @@ export default function WizardShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const brandName = useBrandKitStore((s) => s.data.brandInfo.name);
   const currentStep = WIZARD_STEPS.findIndex((s) =>
     pathname.endsWith(s.id)
   );
@@ -176,12 +178,23 @@ export default function WizardShell({
 
         <div className="flex-1 flex justify-end min-w-0">
           {nextStep ? (
-            <Button size="default" asChild>
-              <Link href={`/builder/${nextStep.id}`}>
+            currentIdx === 0 && brandName.trim().length === 0 ? (
+              <Button
+                size="default"
+                disabled
+                title="Enter a brand name to continue"
+              >
                 {nextStep.label}
                 <ArrowRight className="size-3.5" />
-              </Link>
-            </Button>
+              </Button>
+            ) : (
+              <Button size="default" asChild>
+                <Link href={`/builder/${nextStep.id}`}>
+                  {nextStep.label}
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </Button>
+            )
           ) : null}
         </div>
       </div>

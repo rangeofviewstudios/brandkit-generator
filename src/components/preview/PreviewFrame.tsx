@@ -9,6 +9,7 @@ export default function PreviewFrame() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [html, setHtml] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(
     "desktop"
   );
@@ -19,8 +20,10 @@ export default function PreviewFrame() {
     try {
       const generated = generateBrandKit(data);
       setHtml(generated);
-    } catch {
-      // silently fail during editing
+      setError(null);
+    } catch (err) {
+      // Keep last-good `html` so the preview stays usable.
+      setError(err instanceof Error ? err.message : "Preview generation failed");
     }
     setTimeout(() => setIsUpdating(false), 150);
   }, [data]);
@@ -60,6 +63,25 @@ export default function PreviewFrame() {
           ))}
         </div>
       </div>
+
+      {/* Error banner — preview keeps last good render below */}
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 px-4 py-2 border-b border-[rgba(220,120,100,0.35)] bg-[rgba(220,120,100,0.1)] text-[12px] text-[#E89178]"
+        >
+          <span className="font-semibold">Preview error:</span>
+          <span className="flex-1 min-w-0 break-words">{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-[#E89178]/70 hover:text-[#E89178] ml-2"
+            aria-label="Dismiss preview error"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Iframe container */}
       <div className="flex-1 flex items-start justify-center overflow-auto p-4">

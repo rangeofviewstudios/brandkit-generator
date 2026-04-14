@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Download, Check, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TemplateId } from "@/lib/types";
+import ExportSpecButton from "@/components/ExportSpecButton";
+import ExportTokensButton from "@/components/ExportTokensButton";
+import ExportTailwindButton from "@/components/ExportTailwindButton";
+import { useToast } from "@/hooks/useToast";
 
 // ──────────────────────────────────────────────────────────────
 // Mini-preview thumbnails that actually show the LAYOUT difference
@@ -125,19 +129,29 @@ export default function ExportStep() {
     },
   ];
 
+  const pushToast = useToast((s) => s.push);
+
   const handleExport = () => {
-    const html = generateBrandKit(data);
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${fileName}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setExported(true);
-    setTimeout(() => setExported(false), 3000);
+    try {
+      const html = generateBrandKit(data);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${fileName}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setExported(true);
+      setTimeout(() => setExported(false), 3000);
+      pushToast(`${fileName}.html exported`, "success");
+    } catch (err) {
+      pushToast(
+        err instanceof Error ? `Export failed: ${err.message}` : "Export failed",
+        "error"
+      );
+    }
   };
 
   return (
@@ -149,7 +163,7 @@ export default function ExportStep() {
         <h2 className="text-2xl font-light tracking-tight mb-1 text-[#FFF4E3]">
           <span className="font-semibold">Export</span>
         </h2>
-        <p className="text-sm text-[#FFF4E3]/50">
+        <p className="text-sm text-[#FFF4E3]/65">
           Pick a layout format and download your brand kit.
         </p>
       </div>
@@ -258,6 +272,25 @@ export default function ExportStep() {
           )}
         </Button>
 
+        <ExportSpecButton data={data} filename={fileName} className="w-full" />
+
+        <div className="pt-2">
+          <p className="text-[10px] tracking-[0.2em] uppercase text-[#D0BEA5]/50 mb-2 font-medium">
+            For developers
+          </p>
+          <div className="space-y-2">
+            <ExportTokensButton
+              data={data}
+              filename={fileName}
+              className="w-full"
+            />
+            <ExportTailwindButton
+              data={data}
+              filename={fileName}
+              className="w-full"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

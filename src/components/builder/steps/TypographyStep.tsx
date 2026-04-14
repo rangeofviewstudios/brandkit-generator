@@ -127,7 +127,7 @@ export default function TypographyStep() {
         <h2 className="text-2xl font-light tracking-tight mb-1 text-[#FFF4E3]">
           <span className="font-semibold">Typography</span>
         </h2>
-        <p className="text-sm text-[#FFF4E3]/50">
+        <p className="text-sm text-[#FFF4E3]/65">
           Pick a suggested pairing or upload your own fonts.
         </p>
       </div>
