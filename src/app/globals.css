@@ -1,0 +1,210 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── ROV Unified Palette — darker espresso base for premium feel ──
+       #1F0F08 — Deep espresso (darkest bg)
+       #2A1810 — Rich cocoa (raised base)
+       #603E25 — Mid brown (elevated surfaces)
+       #D0BEA5 — Tan (borders, accents)
+       #FFF4E3 — Cream (text)
+       #C9A961 — Gold (shine, selection highlights)
+       #E5C26A — Light gold (shimmer)
+    */
+    --background: 22 60% 8%;              /* #1F0F08 deep espresso */
+    --foreground: 36 100% 95%;            /* #FFF4E3 */
+
+    --card: 22 40% 14%;                   /* #2A1810 lifted */
+    --card-foreground: 36 100% 95%;
+    --popover: 22 40% 14%;
+    --popover-foreground: 36 100% 95%;
+
+    --primary: 33 36% 73%;                /* #D0BEA5 tan */
+    --primary-foreground: 22 60% 8%;
+
+    --secondary: 25 45% 26%;              /* #603E25 */
+    --secondary-foreground: 36 100% 95%;
+
+    --muted: 22 30% 12%;
+    --muted-foreground: 33 36% 73%;
+
+    --accent: 33 36% 73%;
+    --accent-foreground: 22 60% 8%;
+
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 36 100% 95%;
+
+    --border: 33 20% 30%;
+    --input: 33 20% 30%;
+    --ring: 43 52% 59%;                   /* Gold ring */
+
+    --radius: 0.625rem;
+
+    /* ── Raw hex tokens ── */
+    --deep: #1F0F08;
+    --cocoa: #2A1810;
+    --mid: #603E25;
+    --tan: #D0BEA5;
+    --cream: #FFF4E3;
+    --gold: #C9A961;
+    --gold-light: #E5C26A;
+    --gold-deep: #A68A3D;
+    --brown: linear-gradient(132deg, #EA9A61 4.77%, #B16937 27.26%, #A64D2B 50.09%, #42201C 76.74%);
+
+    /* Glass layers */
+    --glass-1: rgba(208, 190, 165, 0.03);
+    --glass-2: rgba(208, 190, 165, 0.06);
+    --glass-3: rgba(208, 190, 165, 0.1);
+    --tan-border: rgba(208, 190, 165, 0.12);
+    --tan-border-strong: rgba(208, 190, 165, 0.22);
+    --gold-border: rgba(201, 169, 97, 0.25);
+    --gold-border-strong: rgba(201, 169, 97, 0.5);
+    --cream-highlight: rgba(255, 244, 227, 0.04);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* Candlelit glow — mid-brown warmth + a whisper of gold */
+    background-image:
+      radial-gradient(ellipse 70% 55% at 18% 12%, rgba(96, 62, 37, 0.45) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 82% 78%, rgba(201, 169, 97, 0.08) 0%, transparent 65%),
+      radial-gradient(ellipse 55% 40% at 88% 8%, rgba(66, 32, 28, 0.5) 0%, transparent 70%);
+    background-attachment: fixed;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.028;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 128px 128px;
+    mix-blend-mode: overlay;
+  }
+
+  ::selection {
+    background: rgba(201, 169, 97, 0.3);
+    color: #FFF4E3;
+  }
+}
+
+/* ── Utilities ── */
+@layer utilities {
+  .surface-1 {
+    background: var(--glass-1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--tan-border);
+  }
+  .surface-2 {
+    background: var(--glass-2);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--tan-border);
+  }
+
+  /* Signature brown gradient + gold inner highlight for luxury feel */
+  .btn-brown {
+    background: var(--brown);
+    color: var(--cream);
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+      inset 0 1px 0 rgba(229, 194, 106, 0.35),   /* gold top highlight */
+      inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+  }
+  .btn-brown::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(229, 194, 106, 0.2) 0%, rgba(255, 244, 227, 0) 50%);
+    pointer-events: none;
+  }
+  .btn-brown:hover {
+    filter: brightness(1.1) saturate(1.08);
+  }
+
+  /* Gold accent for selection / emphasis */
+  .text-gold {
+    color: var(--gold);
+  }
+  .border-gold {
+    border-color: var(--gold);
+  }
+
+  /* Hairline gold rim — for premium card selection */
+  .ring-gold {
+    box-shadow: 0 0 0 1px rgba(201, 169, 97, 0.45), 0 4px 24px rgba(201, 169, 97, 0.12);
+  }
+
+  /* Tan button (unchanged) */
+  .btn-tan {
+    background: #D0BEA5;
+    color: #1F0F08;
+    border: 1px solid rgba(208, 190, 165, 0.3);
+    font-weight: 500;
+  }
+  .btn-tan:hover {
+    background: #DCCDB8;
+  }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(201, 169, 97, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(201, 169, 97, 0.4);
+}
+
+/* ── Gold shimmer animation for signature CTAs ── */
+@keyframes gold-shine {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(240%); }
+}
+.cta-shine {
+  position: relative;
+  overflow: hidden;
+}
+.cta-shine::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 244, 227, 0.15) 40%,
+    rgba(229, 194, 106, 0.45) 50%,
+    rgba(255, 244, 227, 0.15) 60%,
+    transparent 100%
+  );
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.cta-shine:hover::after {
+  animation: gold-shine 1.1s ease;
+}
+
+/* ── Ambient gold sparkle — subtle periodic pulse on key accents ── */
+@keyframes gold-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+.gold-pulse {
+  animation: gold-pulse 3s ease-in-out infinite;
+}
