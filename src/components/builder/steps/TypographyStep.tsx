@@ -1,26 +1,48 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useBrandKitStore } from "@/lib/store";
-import { FONT_PAIRS } from "@/lib/utils/font-pairs";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Upload, Type, Sparkles, X } from "lucide-react";
+import { Upload, X, ChevronDown, Check, Sliders } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FontDefinition } from "@/lib/types";
+import React from "react";
 
-type Mode = "assisted" | "manual";
-type FontSource = "google" | "upload";
+// Curated suggestion pools — rendered inside each slot's dropdown so users
+// see the actual shape of each font, not just the name.
+const DISPLAY_SUGGESTIONS = [
+  "Playfair Display",
+  "Fraunces",
+  "Instrument Serif",
+  "Cormorant Garamond",
+  "Space Grotesk",
+  "Sora",
+  "Geist",
+  "DM Serif Display",
+];
+const BODY_SUGGESTIONS = [
+  "Inter",
+  "Roboto",
+  "DM Sans",
+  "Work Sans",
+  "Lato",
+  "Source Sans 3",
+  "IBM Plex Sans",
+  "Geist",
+];
 
-// Build a Google Fonts URL from a font name
+function capFontSize(fontSize: string): string {
+  const num = parseFloat(fontSize);
+  if (isNaN(num)) return fontSize;
+  return `${Math.min(num, 40)}px`;
+}
+
 function buildGoogleFontsUrl(name: string): string {
   if (!name.trim()) return "";
   const family = name.trim().replace(/\s+/g, "+");
   return `https://fonts.googleapis.com/css2?family=${family}:wght@300;400;500;600;700&display=swap`;
 }
 
-// Dynamically load a Google Font into the builder document for live preview
 function loadGoogleFontInBuilder(url: string) {
   if (!url || typeof document === "undefined") return;
   const id = `gf-${btoa(url).slice(0, 12)}`;
@@ -32,12 +54,7 @@ function loadGoogleFontInBuilder(url: string) {
   document.head.appendChild(link);
 }
 
-// Inject a @font-face rule for a custom uploaded font into the builder
-function loadCustomFontInBuilder(
-  name: string,
-  dataUrl: string,
-  format: string
-) {
+function loadCustomFontInBuilder(name: string, dataUrl: string, format: string) {
   if (typeof document === "undefined") return;
   const id = `cf-${btoa(name).slice(0, 12)}`;
   if (document.getElementById(id)) return;
@@ -47,10 +64,7 @@ function loadCustomFontInBuilder(
   document.head.appendChild(style);
 }
 
-// Detect file extension → format
-function detectFontFormat(
-  filename: string
-): "woff2" | "woff" | "ttf" | "otf" {
+function detectFontFormat(filename: string): "woff2" | "woff" | "ttf" | "otf" {
   const ext = filename.split(".").pop()?.toLowerCase();
   if (ext === "woff2") return "woff2";
   if (ext === "woff") return "woff";
@@ -63,39 +77,15 @@ export default function TypographyStep() {
   const setTypography = useBrandKitStore((s) => s.setTypography);
   const updateScaleEntry = useBrandKitStore((s) => s.updateScaleEntry);
 
-  // Determine initial mode from current typography (custom font or non-preset = manual)
-  const isPresetPair = FONT_PAIRS.some(
-    (p) =>
-      p.display.name === typography.displayFont.name &&
-      p.body.name === typography.bodyFont.name
-  );
-  const hasCustom =
-    typography.displayFont.customFontData ||
-    typography.bodyFont.customFontData;
+  const [scaleOpen, setScaleOpen] = useState(false);
 
-  const [mode, setMode] = useState<Mode>(
-    hasCustom || !isPresetPair ? "manual" : "assisted"
-  );
+  // Preload every suggestion font so dropdown options render in-font immediately
+  useEffect(() => {
+    [...DISPLAY_SUGGESTIONS, ...BODY_SUGGESTIONS].forEach((name) => {
+      loadGoogleFontInBuilder(buildGoogleFontsUrl(name));
+    });
+  }, []);
 
-  const currentPairId = FONT_PAIRS.find(
-    (p) =>
-      p.display.name === typography.displayFont.name &&
-      p.body.name === typography.bodyFont.name
-  )?.id;
-
-  const handlePairChange = (pairId: string) => {
-    const pair = FONT_PAIRS.find((p) => p.id === pairId);
-    if (pair) {
-      setTypography({
-        displayFont: pair.display,
-        bodyFont: pair.body,
-      });
-      loadGoogleFontInBuilder(pair.display.googleFontsUrl);
-      loadGoogleFontInBuilder(pair.body.googleFontsUrl);
-    }
-  };
-
-  // Ensure currently-set fonts are loaded in builder for live preview
   useEffect(() => {
     if (typography.displayFont.customFontData) {
       loadCustomFontInBuilder(
@@ -117,9 +107,13 @@ export default function TypographyStep() {
     }
   }, [typography.displayFont, typography.bodyFont]);
 
+  const handleDisplayChange = (font: FontDefinition) =>
+    setTypography({ displayFont: font });
+  const handleBodyChange = (font: FontDefinition) =>
+    setTypography({ bodyFont: font });
+
   return (
     <div className="max-w-md space-y-7">
-      {/* Heading */}
       <div>
         <p className="text-[10px] tracking-[0.25em] uppercase text-[#D0BEA5]/60 mb-2 font-medium">
           Step 04
@@ -128,367 +122,643 @@ export default function TypographyStep() {
           <span className="font-semibold">Typography</span>
         </h2>
         <p className="text-sm text-[#FFF4E3]/65">
-          Pick a suggested pairing or upload your own fonts.
+          Pick any Google Font or upload your own — preview updates live.
         </p>
       </div>
 
-      {/* Mode Toggle */}
-      <div className="inline-flex p-1 rounded-full bg-[rgba(59,33,20,0.6)] backdrop-blur-md border border-[rgba(208,190,165,0.15)] shadow-[inset_0_1px_0_rgba(0,0,0,0.2)]">
-        {(
-          [
-            { id: "assisted", label: "Suggested pairings", Icon: Sparkles },
-            { id: "manual", label: "Upload your own", Icon: Type },
-          ] as const
-        ).map(({ id, label, Icon }) => {
-          const isActive = mode === id;
-          return (
-            <button
-              key={id}
-              onClick={() => setMode(id)}
-              className={cn(
-                "relative px-4 py-2 rounded-full text-xs font-semibold transition-colors duration-150 whitespace-nowrap flex items-center gap-1.5",
-                isActive
-                  ? "text-[#3B2114]"
-                  : "text-[#D0BEA5]/50 hover:text-[#D0BEA5]"
-              )}
-            >
-              {isActive && (
-                <motion.span
-                  layoutId="typo-toggle-pill"
-                  aria-hidden
-                  className="absolute inset-0 rounded-full bg-[#D0BEA5] shadow-[0_2px_10px_rgba(208,190,165,0.35)]"
-                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                />
-              )}
-              <Icon className="relative size-3" />
-              <span className="relative">{label}</span>
-            </button>
-          );
-        })}
+      {/* Live Combined Preview */}
+      <div className="p-4 rounded-2xl bg-[rgba(255,244,227,0.03)] border border-[rgba(208,190,165,0.12)] backdrop-blur-md overflow-hidden">
+        <p className="text-[9px] tracking-[0.25em] uppercase text-[#D0BEA5]/40 mb-3 font-medium">
+          Live Preview
+        </p>
+        <p
+          className="text-[28px] leading-tight text-[#FFF4E3] mb-2"
+          style={{
+            fontFamily: `'${typography.displayFont.name}', ${typography.displayFont.fallback}`,
+            fontWeight: 600,
+          }}
+        >
+          Brand Headline
+        </p>
+        <p
+          className="text-sm text-[#FFF4E3]/65 leading-relaxed"
+          style={{
+            fontFamily: `'${typography.bodyFont.name}', ${typography.bodyFont.fallback}`,
+            fontWeight: 300,
+          }}
+        >
+          Body text flows here, readable and expressive. This is how your brand
+          speaks at paragraph level across all materials and touchpoints.
+        </p>
+        <div className="mt-3 pt-3 border-t border-[rgba(208,190,165,0.08)] flex items-center justify-between">
+          <span
+            className="text-[10px] text-[#D0BEA5]/50"
+            style={{
+              fontFamily: `'${typography.displayFont.name}', ${typography.displayFont.fallback}`,
+            }}
+          >
+            {typography.displayFont.name}
+          </span>
+          <span className="text-[10px] text-[#D0BEA5]/25">+</span>
+          <span
+            className="text-[10px] text-[#D0BEA5]/50"
+            style={{
+              fontFamily: `'${typography.bodyFont.name}', ${typography.bodyFont.fallback}`,
+            }}
+          >
+            {typography.bodyFont.name}
+          </span>
+        </div>
       </div>
 
-      {/* ── Assisted Mode ── */}
-      {mode === "assisted" && (
-        <div className="space-y-2 animate-in fade-in duration-200">
-          <Label>Font Pair</Label>
-          {FONT_PAIRS.map((pair) => {
-            const isActive = currentPairId === pair.id;
-            return (
-              <button
-                key={pair.id}
-                onClick={() => handlePairChange(pair.id)}
-                className={cn(
-                  "w-full text-left p-4 rounded-xl border transition-all backdrop-blur-sm",
-                  isActive
-                    ? "border-[rgba(208,190,165,0.45)] bg-[rgba(208,190,165,0.08)] shadow-[0_4px_16px_rgba(208,190,165,0.14)]"
-                    : "border-[rgba(208,190,165,0.1)] hover:border-[rgba(208,190,165,0.2)] bg-[rgba(255,244,227,0.02)] hover:bg-[rgba(255,244,227,0.04)]"
-                )}
-              >
-                <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                  <span
-                    className="text-lg text-[#FFF4E3] tracking-tight"
-                    style={{
-                      fontFamily: `'${pair.display.name}', ${pair.display.fallback}`,
-                      fontWeight: 500,
-                    }}
-                  >
-                    {pair.display.name}
-                  </span>
-                  {isActive && (
-                    <span className="text-[9px] tracking-[0.2em] uppercase text-[#C9A961] font-semibold">
-                      Selected
-                    </span>
-                  )}
-                </div>
-                <div
-                  className="text-sm text-[#FFF4E3]/60 leading-relaxed"
-                  style={{
-                    fontFamily: `'${pair.body.name}', ${pair.body.fallback}`,
-                    fontWeight: 300,
-                  }}
-                >
-                  The quick brown fox jumps over the lazy dog.
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* Font slots */}
+      <div className="space-y-4">
+        <FontSlot
+          label="Display Font"
+          role="display"
+          description="Headings and brand titles"
+          suggestions={DISPLAY_SUGGESTIONS}
+          font={typography.displayFont}
+          onChange={handleDisplayChange}
+        />
+        <FontSlot
+          label="Body Font"
+          role="body"
+          description="Paragraphs and general text"
+          suggestions={BODY_SUGGESTIONS}
+          font={typography.bodyFont}
+          onChange={handleBodyChange}
+        />
+      </div>
 
-      {/* ── Manual Mode ── */}
-      {mode === "manual" && (
-        <div className="space-y-5 animate-in fade-in duration-200">
-          <FontSlot
-            label="Display Font"
-            description="Used for headings and brand titles"
-            font={typography.displayFont}
-            onChange={(font) => setTypography({ displayFont: font })}
-          />
-          <FontSlot
-            label="Body Font"
-            description="Used for paragraphs and general text"
-            font={typography.bodyFont}
-            onChange={(font) => setTypography({ bodyFont: font })}
-          />
-        </div>
-      )}
+      {/* Upload custom fonts — separate dedicated section */}
+      <UploadSection
+        displayFont={typography.displayFont}
+        bodyFont={typography.bodyFont}
+        onDisplayChange={handleDisplayChange}
+        onBodyChange={handleBodyChange}
+      />
 
-      {/* Type Scale — shown in both modes */}
-      <div className="space-y-3">
-        <Label>Type Scale</Label>
-        {typography.scale.map((entry, i) => (
-          <div
-            key={entry.label}
-            className="p-3 rounded-xl bg-[rgba(255,244,227,0.03)] backdrop-blur-md border border-[rgba(208,190,165,0.1)] shadow-[inset_0_1px_0_rgba(255,244,227,0.03)] space-y-2.5"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] tracking-[0.2em] uppercase text-[#D0BEA5]/70 font-medium">
-                {entry.label}
-              </span>
-              <span className="text-[9px] text-[#D0BEA5]/40 font-mono tracking-wider">
-                {entry.fontSize} · {entry.fontWeight} · {entry.lineHeight}
-              </span>
+      {/* Type Scale — collapsed behind a detail disclosure */}
+      <div className="rounded-xl border border-[rgba(208,190,165,0.1)] bg-[rgba(255,244,227,0.02)] overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setScaleOpen((v) => !v)}
+          aria-expanded={scaleOpen}
+          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[rgba(255,244,227,0.03)] transition-colors"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <Sliders className="size-3.5 text-[#D0BEA5]/60 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold tracking-[0.12em] uppercase text-[#D0BEA5]/80">
+                Advanced · Type Scale
+              </p>
+              <p className="text-[10px] text-[#FFF4E3]/45 truncate">
+                Fine-tune size, weight, and line height for each level
+              </p>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                value={entry.fontSize}
-                onChange={(e) =>
-                  updateScaleEntry(i, { fontSize: e.target.value })
-                }
-                className="h-8 text-xs"
-                placeholder="16px"
-              />
-              <Input
-                type="number"
-                value={entry.fontWeight}
-                onChange={(e) =>
-                  updateScaleEntry(i, {
-                    fontWeight: parseInt(e.target.value) || 400,
-                  })
-                }
-                className="h-8 text-xs"
-                step={100}
-                min={100}
-                max={900}
-              />
-              <Input
-                value={entry.lineHeight}
-                onChange={(e) =>
-                  updateScaleEntry(i, { lineHeight: e.target.value })
-                }
-                className="h-8 text-xs"
-                placeholder="1.5"
-              />
-            </div>
-            <input
-              value={entry.sampleText}
-              onChange={(e) =>
-                updateScaleEntry(i, { sampleText: e.target.value })
-              }
-              className="w-full bg-transparent border-b border-[rgba(208,190,165,0.1)] pb-1 text-xs text-[#FFF4E3]/70 outline-none focus:text-[#FFF4E3] focus:border-[rgba(208,190,165,0.45)] transition-all"
-              placeholder="Sample text"
-            />
           </div>
-        ))}
+          <ChevronDown
+            className={cn(
+              "size-4 text-[#D0BEA5]/60 flex-shrink-0 ml-2 transition-transform",
+              scaleOpen && "rotate-180"
+            )}
+          />
+        </button>
+        <AnimatePresence initial={false}>
+          {scaleOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="overflow-hidden"
+            >
+              <div className="px-4 pb-4 pt-1 space-y-2.5 border-t border-[rgba(208,190,165,0.08)]">
+                {typography.scale.map((entry, i) => {
+                  const fontDef =
+                    entry.fontFamily === "display"
+                      ? typography.displayFont
+                      : typography.bodyFont;
+                  return (
+                    <div
+                      key={entry.label}
+                      className="rounded-xl bg-[rgba(255,244,227,0.03)] backdrop-blur-md border border-[rgba(208,190,165,0.1)] overflow-hidden"
+                    >
+                      <div className="px-3 pt-3 pb-2">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[8px] tracking-[0.2em] uppercase text-[#D0BEA5]/50 font-semibold">
+                            {entry.label}
+                          </span>
+                          <span
+                            className={cn(
+                              "text-[8px] tracking-[0.12em] uppercase px-1.5 py-0.5 rounded-full font-medium",
+                              entry.fontFamily === "display"
+                                ? "bg-[rgba(201,169,97,0.12)] text-[#C9A961]/70"
+                                : "bg-[rgba(208,190,165,0.08)] text-[#D0BEA5]/45"
+                            )}
+                          >
+                            {entry.fontFamily}
+                          </span>
+                        </div>
+                        <div
+                          className="text-[#FFF4E3] leading-tight truncate"
+                          style={{
+                            fontFamily: `'${fontDef.name}', ${fontDef.fallback}`,
+                            fontSize: capFontSize(entry.fontSize),
+                            fontWeight: entry.fontWeight,
+                            lineHeight: entry.lineHeight,
+                            letterSpacing: entry.letterSpacing,
+                            textTransform: entry.textTransform as React.CSSProperties["textTransform"],
+                          }}
+                        >
+                          {entry.sampleText || entry.label}
+                        </div>
+                      </div>
+
+                      <div className="px-3 pb-3 pt-2 border-t border-[rgba(208,190,165,0.06)] space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <p className="text-[8px] tracking-[0.12em] uppercase text-[#D0BEA5]/30 font-medium">
+                              Size
+                            </p>
+                            <input
+                              value={entry.fontSize}
+                              onChange={(e) =>
+                                updateScaleEntry(i, { fontSize: e.target.value })
+                              }
+                              placeholder="16px"
+                              className="w-full h-7 px-2 rounded-lg bg-[rgba(208,190,165,0.06)] border border-[rgba(208,190,165,0.12)] text-[11px] text-[#FFF4E3]/80 font-mono outline-none focus:border-[rgba(208,190,165,0.4)] transition-colors"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[8px] tracking-[0.12em] uppercase text-[#D0BEA5]/30 font-medium">
+                              Weight
+                            </p>
+                            <input
+                              type="number"
+                              value={entry.fontWeight}
+                              onChange={(e) =>
+                                updateScaleEntry(i, {
+                                  fontWeight: parseInt(e.target.value) || 400,
+                                })
+                              }
+                              step={100}
+                              min={100}
+                              max={900}
+                              className="w-full h-7 px-2 rounded-lg bg-[rgba(208,190,165,0.06)] border border-[rgba(208,190,165,0.12)] text-[11px] text-[#FFF4E3]/80 font-mono outline-none focus:border-[rgba(208,190,165,0.4)] transition-colors"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[8px] tracking-[0.12em] uppercase text-[#D0BEA5]/30 font-medium">
+                              Line H.
+                            </p>
+                            <input
+                              value={entry.lineHeight}
+                              onChange={(e) =>
+                                updateScaleEntry(i, { lineHeight: e.target.value })
+                              }
+                              placeholder="1.5"
+                              className="w-full h-7 px-2 rounded-lg bg-[rgba(208,190,165,0.06)] border border-[rgba(208,190,165,0.12)] text-[11px] text-[#FFF4E3]/80 font-mono outline-none focus:border-[rgba(208,190,165,0.4)] transition-colors"
+                            />
+                          </div>
+                        </div>
+                        <input
+                          value={entry.sampleText}
+                          onChange={(e) =>
+                            updateScaleEntry(i, { sampleText: e.target.value })
+                          }
+                          placeholder="Edit sample text..."
+                          className="w-full bg-transparent border-b border-[rgba(208,190,165,0.08)] pb-1 text-[10px] text-[#FFF4E3]/40 outline-none focus:text-[#FFF4E3]/70 focus:border-[rgba(208,190,165,0.35)] transition-all"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 }
 
 // ──────────────────────────────────────────────────────────────
-// Single font slot (used twice — for display + body font)
+// FontDropdown — combobox with typeahead + curated suggestions
+// ──────────────────────────────────────────────────────────────
+function FontDropdown({
+  value,
+  suggestions,
+  onSelect,
+  disabled,
+}: {
+  value: string;
+  suggestions: string[];
+  onSelect: (name: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const filtered = query
+    ? suggestions.filter((s) => s.toLowerCase().includes(query.toLowerCase()))
+    : suggestions;
+
+  const trimmedQuery = query.trim();
+  const canAddCustom =
+    trimmedQuery.length > 0 &&
+    !suggestions.some((s) => s.toLowerCase() === trimmedQuery.toLowerCase());
+
+  const commit = (name: string) => {
+    onSelect(name);
+    setOpen(false);
+    setQuery("");
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={cn(
+          "w-full h-10 flex items-center justify-between px-3 rounded-lg border bg-[rgba(208,190,165,0.06)] transition-all",
+          disabled
+            ? "opacity-60 cursor-not-allowed border-[rgba(208,190,165,0.1)]"
+            : open
+            ? "border-[rgba(208,190,165,0.5)] bg-[rgba(208,190,165,0.1)]"
+            : "border-[rgba(208,190,165,0.15)] hover:border-[rgba(208,190,165,0.3)]"
+        )}
+      >
+        <span
+          className="text-sm text-[#FFF4E3] truncate"
+          style={{ fontFamily: `'${value}', sans-serif` }}
+        >
+          {value || "Pick a font"}
+        </span>
+        <ChevronDown
+          className={cn(
+            "size-4 text-[#D0BEA5]/60 flex-shrink-0 ml-2 transition-transform",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+
+      <AnimatePresence>
+        {open && !disabled && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.12 }}
+            className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 rounded-xl border border-[rgba(208,190,165,0.35)] bg-[rgba(42,24,16,0.98)] backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] overflow-hidden"
+          >
+            <div className="p-2 border-b border-[rgba(208,190,165,0.1)]">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canAddCustom) commit(trimmedQuery);
+                  if (e.key === "Enter" && filtered[0]) commit(filtered[0]);
+                  if (e.key === "Escape") {
+                    setOpen(false);
+                    setQuery("");
+                  }
+                }}
+                placeholder="Search or type any Google Font…"
+                className="w-full h-8 px-2 rounded-md bg-transparent border border-[rgba(208,190,165,0.15)] text-[12px] text-[#FFF4E3] placeholder:text-[#D0BEA5]/35 outline-none focus:border-[rgba(208,190,165,0.45)]"
+              />
+            </div>
+            <ul
+              role="listbox"
+              className="max-h-64 overflow-y-auto py-1 [scrollbar-width:thin]"
+            >
+              {filtered.map((s) => {
+                const isCurrent = s === value;
+                return (
+                  <li key={s}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isCurrent}
+                      onClick={() => commit(s)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-2 text-left transition-colors",
+                        isCurrent
+                          ? "bg-[rgba(201,169,97,0.14)] text-[#FFF4E3]"
+                          : "text-[#FFF4E3]/85 hover:bg-[rgba(208,190,165,0.08)]"
+                      )}
+                    >
+                      <span
+                        className="text-[15px] truncate"
+                        style={{ fontFamily: `'${s}', sans-serif` }}
+                      >
+                        {s}
+                      </span>
+                      {isCurrent && (
+                        <Check className="size-3.5 text-[#C9A961] flex-shrink-0 ml-2" />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+              {filtered.length === 0 && !canAddCustom && (
+                <li className="px-3 py-3 text-[11px] text-[#D0BEA5]/40 text-center">
+                  No matches
+                </li>
+              )}
+              {canAddCustom && (
+                <li className="border-t border-[rgba(208,190,165,0.08)] mt-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => commit(trimmedQuery)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12px] text-[#C9A961] hover:bg-[rgba(201,169,97,0.1)] transition-colors"
+                  >
+                    <span className="text-[#D0BEA5]/50">Use custom:</span>
+                    <span
+                      className="truncate"
+                      style={{ fontFamily: `'${trimmedQuery}', sans-serif` }}
+                    >
+                      {trimmedQuery}
+                    </span>
+                  </button>
+                </li>
+              )}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────
+// FontSlot — dropdown + live preview. No upload here.
 // ──────────────────────────────────────────────────────────────
 function FontSlot({
   label,
+  role,
   description,
+  suggestions,
   font,
   onChange,
 }: {
   label: string;
+  role: "display" | "body";
   description: string;
+  suggestions: string[];
   font: FontDefinition;
   onChange: (font: FontDefinition) => void;
 }) {
-  const [source, setSource] = useState<FontSource>(
-    font.customFontData ? "upload" : "google"
-  );
-  const [googleName, setGoogleName] = useState(
-    font.customFontData ? "" : font.name
-  );
-  const fileRef = useRef<HTMLInputElement>(null);
+  const isCustom = !!font.customFontData;
 
   const applyGoogleFont = useCallback(
     (name: string) => {
-      setGoogleName(name);
-      if (!name.trim()) return;
-      const url = buildGoogleFontsUrl(name);
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const url = buildGoogleFontsUrl(trimmed);
+      loadGoogleFontInBuilder(url);
       onChange({
         ...font,
-        name: name.trim(),
+        name: trimmed,
         googleFontsUrl: url,
-        fallback: "sans-serif",
+        fallback: role === "display" ? "serif" : "sans-serif",
         customFontData: undefined,
         customFontFormat: undefined,
       });
     },
-    [font, onChange]
+    [font, onChange, role]
   );
 
-  const handleFileUpload = async (file: File) => {
+  return (
+    <div className="p-4 rounded-xl bg-[rgba(255,244,227,0.03)] backdrop-blur-md border border-[rgba(208,190,165,0.1)] shadow-[inset_0_1px_0_rgba(255,244,227,0.03)] space-y-3">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[10px] tracking-[0.2em] uppercase text-[#D0BEA5]/70 font-semibold">
+            {label}
+          </p>
+          <p className="text-[10px] text-[#FFF4E3]/40 mt-0.5">{description}</p>
+        </div>
+        {isCustom && (
+          <span className="text-[8px] tracking-[0.15em] uppercase px-2 py-0.5 rounded-full bg-[rgba(201,169,97,0.12)] text-[#C9A961]/80 font-medium">
+            Custom
+          </span>
+        )}
+      </div>
+
+      <FontDropdown
+        value={font.name}
+        suggestions={suggestions}
+        onSelect={applyGoogleFont}
+        disabled={isCustom}
+      />
+
+      {isCustom && (
+        <p className="text-[10px] text-[#D0BEA5]/45">
+          Using an uploaded font. Remove it in the upload section below to switch back to Google Fonts.
+        </p>
+      )}
+
+      <div className="pt-2 border-t border-[rgba(208,190,165,0.08)]">
+        <p
+          className="text-[22px] text-[#FFF4E3] leading-tight"
+          style={{
+            fontFamily: `'${font.name}', ${font.fallback}`,
+            fontWeight: role === "display" ? 600 : 400,
+          }}
+        >
+          Aa Bb Cc 0-9
+        </p>
+        <p
+          className="text-xs text-[#FFF4E3]/50 mt-0.5 truncate"
+          style={{
+            fontFamily: `'${font.name}', ${font.fallback}`,
+            fontWeight: 300,
+          }}
+        >
+          {font.name} — The quick brown fox jumps over the lazy dog
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────
+// UploadSection — collapsed by default. Two file zones.
+// ──────────────────────────────────────────────────────────────
+function UploadSection({
+  displayFont,
+  bodyFont,
+  onDisplayChange,
+  onBodyChange,
+}: {
+  displayFont: FontDefinition;
+  bodyFont: FontDefinition;
+  onDisplayChange: (f: FontDefinition) => void;
+  onBodyChange: (f: FontDefinition) => void;
+}) {
+  const hasAnyCustom = !!(displayFont.customFontData || bodyFont.customFontData);
+  const [open, setOpen] = useState(hasAnyCustom);
+
+  return (
+    <div className="rounded-xl border border-[rgba(208,190,165,0.1)] bg-[rgba(255,244,227,0.02)] overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[rgba(255,244,227,0.03)] transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <Upload className="size-3.5 text-[#D0BEA5]/60 flex-shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold tracking-[0.12em] uppercase text-[#D0BEA5]/80">
+              Upload Custom Fonts
+            </p>
+            <p className="text-[10px] text-[#FFF4E3]/45 truncate">
+              WOFF2 / WOFF / TTF / OTF · embeds directly in your exported kit
+            </p>
+          </div>
+        </div>
+        <ChevronDown
+          className={cn(
+            "size-4 text-[#D0BEA5]/60 flex-shrink-0 ml-2 transition-transform",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-4 pt-2 space-y-3 border-t border-[rgba(208,190,165,0.08)]">
+              <UploadZone
+                label="Display"
+                font={displayFont}
+                role="display"
+                onChange={onDisplayChange}
+              />
+              <UploadZone
+                label="Body"
+                font={bodyFont}
+                role="body"
+                onChange={onBodyChange}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function UploadZone({
+  label,
+  font,
+  role,
+  onChange,
+}: {
+  label: string;
+  font: FontDefinition;
+  role: "display" | "body";
+  onChange: (font: FontDefinition) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const isCustom = !!font.customFontData;
+
+  const handleFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
       const format = detectFontFormat(file.name);
       const name = file.name.replace(/\.[^.]+$/, "");
+      loadCustomFontInBuilder(name, dataUrl, format);
       onChange({
         ...font,
         name,
         customFontData: dataUrl,
         customFontFormat: format,
         googleFontsUrl: "",
-        fallback: "sans-serif",
+        fallback: role === "display" ? "serif" : "sans-serif",
       });
     };
     reader.readAsDataURL(file);
   };
 
   const clearCustom = () => {
+    const defaultName = role === "display" ? "Playfair Display" : "Inter";
     onChange({
       ...font,
-      name: "Inter",
-      googleFontsUrl: buildGoogleFontsUrl("Inter"),
+      name: defaultName,
+      googleFontsUrl: buildGoogleFontsUrl(defaultName),
       customFontData: undefined,
       customFontFormat: undefined,
-      fallback: "sans-serif",
+      fallback: role === "display" ? "serif" : "sans-serif",
     });
-    setSource("google");
-    setGoogleName("Inter");
   };
 
   return (
-    <div className="p-4 rounded-xl bg-[rgba(255,244,227,0.03)] backdrop-blur-md border border-[rgba(208,190,165,0.1)] shadow-[inset_0_1px_0_rgba(255,244,227,0.03)] space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[10px] tracking-[0.2em] uppercase text-[#D0BEA5]/70 font-medium">
-            {label}
-          </p>
-          <p className="text-[10px] text-[#FFF4E3]/40 mt-0.5">{description}</p>
+    <div>
+      <p className="text-[9px] tracking-[0.18em] uppercase text-[#D0BEA5]/55 font-semibold mb-1.5">
+        {label}
+      </p>
+      {isCustom ? (
+        <div className="flex items-center justify-between gap-2 p-3 rounded-lg bg-[rgba(201,169,97,0.08)] border border-[rgba(201,169,97,0.3)]">
+          <div className="min-w-0">
+            <p className="text-sm text-[#FFF4E3] truncate">{font.name}</p>
+            <p className="text-[9px] text-[#D0BEA5]/55 tracking-wide uppercase mt-0.5">
+              .{font.customFontFormat}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={clearCustom}
+            aria-label={`Remove uploaded ${label.toLowerCase()} font`}
+            className="size-7 rounded-full flex items-center justify-center text-[#D0BEA5]/55 hover:text-[#E89178] hover:bg-[rgba(220,120,100,0.1)] transition-all flex-shrink-0"
+          >
+            <X className="size-3.5" />
+          </button>
         </div>
-      </div>
-
-      {/* Source sub-toggle */}
-      <div className="inline-flex p-0.5 rounded-full bg-[rgba(59,33,20,0.5)] border border-[rgba(208,190,165,0.12)] text-[10px]">
-        {(
-          [
-            { id: "google" as const, label: "Google Font" },
-            { id: "upload" as const, label: "Upload file" },
-          ]
-        ).map((opt) => {
-          const isActive = source === opt.id;
-          return (
-            <button
-              key={opt.id}
-              onClick={() => setSource(opt.id)}
-              className={cn(
-                "relative px-3 py-1 rounded-full transition-colors duration-150 font-semibold",
-                isActive
-                  ? "text-[#3B2114]"
-                  : "text-[#D0BEA5]/50 hover:text-[#D0BEA5]"
-              )}
-            >
-              {isActive && (
-                <motion.span
-                  layoutId={`font-source-pill-${label}`}
-                  aria-hidden
-                  className="absolute inset-0 rounded-full bg-[#D0BEA5]"
-                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                />
-              )}
-              <span className="relative">{opt.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Google Font input */}
-      {source === "google" && (
-        <div className="space-y-2 animate-in fade-in duration-150">
-          <Input
-            value={googleName}
-            onChange={(e) => applyGoogleFont(e.target.value)}
-            placeholder="e.g. Inter, Playfair Display"
-            className="text-sm"
+      ) : (
+        <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-[rgba(208,190,165,0.18)] rounded-lg cursor-pointer hover:border-[rgba(208,190,165,0.4)] hover:bg-[rgba(208,190,165,0.03)] transition-all">
+          <Upload className="size-3.5 text-[#D0BEA5]/50" />
+          <span className="text-xs text-[#FFF4E3]/55">
+            Click to upload {label.toLowerCase()} font file
+          </span>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".woff2,.woff,.ttf,.otf"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleFile(f);
+              e.target.value = "";
+            }}
+            className="hidden"
           />
-          <p className="text-[10px] text-[#FFF4E3]/40">
-            Type any Google Font name — loaded automatically.
-          </p>
-        </div>
+        </label>
       )}
-
-      {/* Upload input */}
-      {source === "upload" && (
-        <div className="space-y-2 animate-in fade-in duration-150">
-          {font.customFontData ? (
-            <div className="flex items-center justify-between p-3 rounded-lg bg-[rgba(208,190,165,0.08)] border border-[rgba(208,190,165,0.22)]">
-              <div className="min-w-0">
-                <p className="text-sm text-[#FFF4E3] truncate">{font.name}</p>
-                <p className="text-[9px] text-[#D0BEA5]/60 uppercase tracking-wider mt-0.5">
-                  Custom · {font.customFontFormat}
-                </p>
-              </div>
-              <button
-                onClick={clearCustom}
-                className="size-7 rounded-full flex items-center justify-center text-[#D0BEA5]/50 hover:text-destructive hover:bg-destructive/10 transition-all flex-shrink-0"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
-          ) : (
-            <label className="flex flex-col items-center justify-center gap-1.5 p-5 border-2 border-dashed border-[rgba(208,190,165,0.18)] rounded-lg cursor-pointer hover:border-[rgba(208,190,165,0.55)] hover:bg-[rgba(208,190,165,0.05)] transition-all">
-              <Upload className="size-4 text-[#D0BEA5]/60" />
-              <span className="text-xs text-[#FFF4E3]/60">
-                Drop font file or click
-              </span>
-              <span className="text-[9px] text-[#D0BEA5]/50 tracking-[0.2em] uppercase font-medium">
-                WOFF2 · WOFF · TTF · OTF
-              </span>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileUpload(file);
-                  e.target.value = "";
-                }}
-                className="hidden"
-              />
-            </label>
-          )}
-        </div>
-      )}
-
-      {/* Live preview */}
-      <div className="pt-1 border-t border-[rgba(208,190,165,0.08)]">
-        <p
-          className="text-2xl text-[#FFF4E3] truncate"
-          style={{
-            fontFamily: `'${font.name}', ${font.fallback}`,
-            fontWeight: 500,
-          }}
-        >
-          The quick brown fox
-        </p>
-        <p
-          className="text-xs text-[#FFF4E3]/50 mt-1"
-          style={{
-            fontFamily: `'${font.name}', ${font.fallback}`,
-            fontWeight: 300,
-          }}
-        >
-          {font.name || "No font selected"} — jumps over the lazy dog 0123456789
-        </p>
-      </div>
     </div>
   );
 }

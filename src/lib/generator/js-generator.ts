@@ -40,19 +40,35 @@ ${gradientLines}
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function() { toast.classList.remove('show'); }, 2000);
   }
-  function copyText(text, label) {
-    if (!navigator.clipboard) {
+  function copyFallback(text, label) {
+    try {
       var ta = document.createElement('textarea');
       ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '0';
+      ta.style.left = '0';
+      ta.style.opacity = '0';
       document.body.appendChild(ta);
+      ta.focus();
       ta.select();
-      document.execCommand('copy');
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
       document.body.removeChild(ta);
-      showToast((label || 'Copied') + ' ✓');
+      showToast(ok ? (label || 'Copied') + ' ✓' : 'Copy blocked — press ⌘/Ctrl+C');
+    } catch (e) {
+      showToast('Copy blocked by browser');
+    }
+  }
+  function copyText(text, label) {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      copyFallback(text, label);
       return;
     }
     navigator.clipboard.writeText(text).then(function() {
       showToast((label || 'Copied') + ' ✓');
+    }, function() {
+      copyFallback(text, label);
     });
   }
 

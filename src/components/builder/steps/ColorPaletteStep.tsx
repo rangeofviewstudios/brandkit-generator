@@ -4,8 +4,8 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { v4 as uuid } from "uuid";
 import Wheel from "@uiw/react-color-wheel";
 import { hsvaToHex, hexToHsva, type HsvaColor } from "@uiw/color-convert";
-import { motion } from "framer-motion";
-import { AlertTriangle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus, X, ArrowDown, Wand2 } from "lucide-react";
 import { useBrandKitStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import {
@@ -249,10 +249,29 @@ export default function ColorPaletteStep() {
     "",
   ]);
 
+  // Assisted mode — user-assigned palette slots (separate from suggestions)
+  const [paletteSlots, setPaletteSlots] = useState<string[]>(() =>
+    Array(ROLE_LABELS_5.length).fill("")
+  );
+  // Index of the suggestion currently "picked up" waiting to be assigned
+  const [pickedIdx, setPickedIdx] = useState<number | null>(null);
+
   const generated = useMemo(
     () => generatePalette(baseColor, harmony),
     [baseColor, harmony]
   );
+
+  // Resize palette slots when harmony switches between 5- and 6-role modes
+  useEffect(() => {
+    const target = getRoleLabels(harmony).length;
+    setPaletteSlots((prev) => {
+      if (prev.length === target) return prev;
+      if (prev.length < target)
+        return [...prev, ...Array(target - prev.length).fill("")];
+      return prev.slice(0, target);
+    });
+    setPickedIdx(null);
+  }, [harmony]);
 
   const syncToStore = useCallback(
     (colors: string[]) => {
@@ -273,14 +292,59 @@ export default function ColorPaletteStep() {
   );
 
   useEffect(() => {
-    if (mode === "assisted") syncToStore(generated.map((s) => s.hex));
+    if (mode === "assisted") syncToStore(paletteSlots);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generated, mode]);
+  }, [paletteSlots, mode]);
 
   useEffect(() => {
     if (mode === "manual") syncToStore(manualColors);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualColors, mode]);
+
+  // Esc cancels a staged pick
+  useEffect(() => {
+    if (pickedIdx === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPickedIdx(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pickedIdx]);
+
+  const handlePickSuggestion = (i: number) => {
+    setPickedIdx((prev) => (prev === i ? null : i));
+  };
+
+  const handleFillSlot = (slotIdx: number) => {
+    if (pickedIdx === null) return;
+    const hex = generated[pickedIdx]?.hex;
+    if (!hex) return;
+    setPaletteSlots((prev) => {
+      const next = [...prev];
+      next[slotIdx] = hex;
+      return next;
+    });
+    setPickedIdx(null);
+  };
+
+  const handleClearSlot = (slotIdx: number) => {
+    setPaletteSlots((prev) => {
+      const next = [...prev];
+      next[slotIdx] = "";
+      return next;
+    });
+  };
+
+  const handleAutoFill = () => {
+    const hexes = generated.map((g) => g.hex);
+    setPaletteSlots((prev) => prev.map((_, i) => hexes[i] ?? prev[i] ?? ""));
+    setPickedIdx(null);
+  };
+
+  const handleClearAll = () => {
+    setPaletteSlots((prev) => prev.map(() => ""));
+    setPickedIdx(null);
+  };
 
   const handleWheelChange = (color: { hsva: HsvaColor }) => {
     setHsva(color.hsva);
@@ -300,12 +364,18 @@ export default function ColorPaletteStep() {
     setManualColors(updated);
   };
 
-  const displaySwatches: PaletteSwatch[] =
-    mode === "assisted"
-      ? generated
-      : manualColors.map((hex) => ({ hex, gamutClipped: false }));
-
   const currentLabels = getRoleLabels(harmony);
+
+  const badgeFor = (hex: string) => {
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return null;
+    const vsWhite = getContrastRatio(hex, "#FFFFFF");
+    const vsBlack = getContrastRatio(hex, "#000000");
+    const ratio = Math.max(vsWhite, vsBlack);
+    const grade = wcagGrade(ratio);
+    return { ratio, grade, onWhite: vsWhite >= vsBlack };
+  };
+
+  const hasAnySlotFilled = paletteSlots.some((c) => c.length > 0);
 
   return (
     <div className="max-w-md space-y-7">
@@ -424,115 +494,325 @@ export default function ColorPaletteStep() {
         </div>
       )}
 
-      {/* ── Swatch Row ── */}
-      <div className="space-y-3">
-        <p className="text-[10px] font-medium tracking-[0.2em] uppercase text-[#D0BEA5]/60">
-          {mode === "assisted" ? "Generated palette" : "Your colors"}
-        </p>
-        <div
-          className="grid gap-2.5"
-          style={{
-            gridTemplateColumns: `repeat(${displaySwatches.length}, minmax(0, 1fr))`,
-          }}
-        >
-          {displaySwatches.map((swatch, i) => {
-            const color = swatch.hex;
-            const isValid = /^#[0-9a-fA-F]{6}$/.test(color);
-
-            // WCAG: compare swatch against #FFF and #000, take the higher ratio
-            let badgeRatio = 0;
-            let badgeGrade: "AAA" | "AA" | "FAIL" = "FAIL";
-            if (isValid) {
-              const vsWhite = getContrastRatio(color, "#FFFFFF");
-              const vsBlack = getContrastRatio(color, "#000000");
-              badgeRatio = Math.max(vsWhite, vsBlack);
-              badgeGrade = wcagGrade(badgeRatio);
-            }
-            const passes = badgeGrade !== "FAIL";
-
-            return (
-              <div key={i} className="space-y-2 animate-in fade-in duration-300">
-                <div
-                  className={cn(
-                    "relative w-full h-20 rounded-xl transition-all duration-300",
-                    isValid
-                      ? "border border-[rgba(208,190,165,0.15)] shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,244,227,0.1)]"
-                      : "border-2 border-dashed border-[rgba(208,190,165,0.18)] bg-[rgba(255,244,227,0.02)]"
-                  )}
-                  style={isValid ? { background: color } : {}}
-                >
-                  {swatch.gamutClipped && isValid && (
-                    <span
-                      title="This color was adjusted to fit sRGB display gamut"
-                      aria-label="This color was adjusted to fit sRGB display gamut"
-                      className="absolute top-1 right-1 flex items-center justify-center size-5 rounded-full bg-black/55 backdrop-blur-sm text-[#FFB547]"
+      {/* ── Assisted mode: Suggestions + Your Palette ── */}
+      {mode === "assisted" && (
+        <>
+          {/* Suggestions row */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-medium tracking-[0.2em] uppercase text-[#D0BEA5]/60">
+              Suggested colors
+            </p>
+            <div
+              className="grid gap-2"
+              style={{
+                gridTemplateColumns: `repeat(${generated.length}, minmax(0, 1fr))`,
+              }}
+            >
+              {generated.map((sugg, i) => {
+                const isPicked = pickedIdx === i;
+                const dimmed = pickedIdx !== null && !isPicked;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => handlePickSuggestion(i)}
+                    aria-pressed={isPicked}
+                    className={cn(
+                      "relative flex flex-col items-center gap-1 rounded-lg p-1 transition-all duration-200",
+                      isPicked &&
+                        "ring-2 ring-[#C9A961] ring-offset-2 ring-offset-[#1F0F08] -translate-y-0.5",
+                      dimmed && "opacity-45 hover:opacity-80",
+                      !isPicked && "hover:-translate-y-0.5"
+                    )}
+                    title={
+                      isPicked
+                        ? "Click again to cancel"
+                        : `Pick ${sugg.hex.toUpperCase()}`
+                    }
+                  >
+                    <div
+                      className="relative w-full h-14 rounded-md border border-[rgba(208,190,165,0.15)] shadow-[0_4px_12px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,244,227,0.1)]"
+                      style={{ background: sugg.hex }}
+                    />
+                    <code
+                      className="text-[9px] font-mono text-[#FFF4E3]/70 tracking-wide"
+                      title={
+                        sugg.gamutClipped
+                          ? "Closest sRGB match — slightly adjusted so it can display correctly on screen"
+                          : undefined
+                      }
                     >
-                      <AlertTriangle className="size-3" />
-                    </span>
-                  )}
-                </div>
-                <div className="text-center space-y-1">
-                  <p className="text-[8px] font-medium tracking-[0.18em] uppercase text-[#D0BEA5]/50">
-                    {currentLabels[i]}
-                  </p>
-                  {mode === "manual" ? (
-                    (() => {
-                      const raw = manualColors[i] ?? "";
-                      const hasValue = raw.length > 0;
-                      const invalid = hasValue && !isValid;
-                      return (
-                        <>
-                          <input
-                            type="text"
-                            value={raw}
-                            onChange={(e) => handleManualChange(i, e.target.value)}
-                            aria-invalid={invalid}
-                            className={cn(
-                              "w-full h-7 px-1.5 rounded-md bg-[rgba(255,244,227,0.03)] border text-[10px] font-mono uppercase text-[#FFF4E3] text-center transition-all focus:outline-none",
-                              invalid
-                                ? "border-[rgba(220,120,100,0.5)] focus:border-[rgba(220,120,100,0.7)] focus:ring-1 focus:ring-[rgba(220,120,100,0.3)]"
-                                : "border-[rgba(208,190,165,0.12)] focus:border-[rgba(208,190,165,0.55)] focus:ring-1 focus:ring-[rgba(208,190,165,0.18)]"
-                            )}
-                            placeholder="#______"
-                            maxLength={7}
-                          />
-                          {invalid && (
-                            <span className="block text-[9px] text-[#E89178]/85 leading-tight">
-                              Invalid hex
-                            </span>
-                          )}
-                        </>
-                      );
-                    })()
-                  ) : (
-                    <code className="block text-[10px] font-mono text-[#FFF4E3]/70 tracking-wide">
-                      {color.toUpperCase()}
-                    </code>
-                  )}
-                  {isValid && (
-                    <span
-                      title={`Best text contrast ${badgeRatio}:1 vs ${
-                        getContrastRatio(color, "#FFFFFF") >=
-                        getContrastRatio(color, "#000000")
-                          ? "white"
-                          : "black"
-                      }`}
-                      className={cn(
-                        "inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold leading-none tracking-wide",
-                        passes
-                          ? "bg-[rgba(168,200,150,0.18)] text-[#A8C896] border border-[rgba(168,200,150,0.35)]"
-                          : "bg-[rgba(220,120,100,0.15)] text-[#E89178] border border-[rgba(220,120,100,0.3)]"
+                      {sugg.gamutClipped && (
+                        <span className="text-[#D0BEA5]/45">≈ </span>
                       )}
-                    >
-                      {badgeRatio}:1 {badgeGrade}
-                    </span>
-                  )}
+                      {sugg.hex.toUpperCase()}
+                    </code>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Ready-to-assign banner — only visible when a color is picked */}
+          <AnimatePresence>
+            {pickedIdx !== null && generated[pickedIdx] && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.15 }}
+                className="flex items-center gap-3 p-3 rounded-xl bg-[rgba(201,169,97,0.12)] border border-[rgba(201,169,97,0.45)] shadow-[0_4px_20px_rgba(201,169,97,0.18)]"
+              >
+                <span
+                  className="size-9 rounded-lg border border-[rgba(255,244,227,0.25)] shadow-[inset_0_1px_0_rgba(255,244,227,0.15)] flex-shrink-0"
+                  style={{ background: generated[pickedIdx].hex }}
+                />
+                <div className="flex-1 min-w-0 leading-tight">
+                  <p className="text-[11px] text-[#FFF4E3]/85">
+                    <span className="font-semibold text-[#FFF4E3]">
+                      {generated[pickedIdx].hex.toUpperCase()}
+                    </span>{" "}
+                    <span className="text-[#D0BEA5]/70">is ready —</span>
+                  </p>
+                  <p className="text-[11px] text-[#C9A961] font-semibold flex items-center gap-1">
+                    <ArrowDown className="size-3 animate-bounce" />
+                    tap a slot below to assign
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setPickedIdx(null)}
+                  aria-label="Cancel pick (Esc)"
+                  title="Cancel (Esc)"
+                  className="size-7 rounded-full flex items-center justify-center text-[#D0BEA5]/60 hover:text-[#FFF4E3] hover:bg-[rgba(208,190,165,0.12)] transition-all flex-shrink-0"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Your Palette row */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-medium tracking-[0.2em] uppercase text-[#D0BEA5]/60">
+                Your palette
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleAutoFill}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[9px] tracking-[0.15em] uppercase font-semibold text-[#C9A961] bg-[rgba(201,169,97,0.08)] hover:bg-[rgba(201,169,97,0.18)] border border-[rgba(201,169,97,0.3)] transition-colors"
+                >
+                  <Wand2 className="size-3" />
+                  Auto-fill
+                </button>
+                {hasAnySlotFilled && (
+                  <button
+                    type="button"
+                    onClick={handleClearAll}
+                    className="px-2 py-1 rounded-full text-[9px] tracking-[0.15em] uppercase font-semibold text-[#FFF4E3]/55 hover:text-[#E89178] hover:bg-[rgba(220,120,100,0.08)] transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
-            );
-          })}
+            </div>
+            <div
+              className="grid gap-2.5"
+              style={{
+                gridTemplateColumns: `repeat(${paletteSlots.length}, minmax(0, 1fr))`,
+              }}
+            >
+              {paletteSlots.map((hex, i) => {
+                const isValid = /^#[0-9a-fA-F]{6}$/.test(hex);
+                const badge = isValid ? badgeFor(hex) : null;
+                const canFill = pickedIdx !== null && !isValid;
+                const pickedHex =
+                  pickedIdx !== null ? generated[pickedIdx]?.hex : undefined;
+                return (
+                  <div key={i} className="space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isValid) handleClearSlot(i);
+                        else if (pickedIdx !== null) handleFillSlot(i);
+                      }}
+                      aria-label={
+                        isValid
+                          ? `Clear ${currentLabels[i]} (${hex})`
+                          : canFill
+                          ? `Drop ${pickedHex} into ${currentLabels[i]}`
+                          : `${currentLabels[i]} slot — pick a color first`
+                      }
+                      className={cn(
+                        "relative w-full h-20 rounded-xl transition-all duration-200 group overflow-hidden",
+                        isValid
+                          ? "border border-[rgba(208,190,165,0.2)] shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,244,227,0.1)] cursor-pointer"
+                          : canFill
+                          ? "border-2 border-dashed border-[#C9A961] bg-[rgba(201,169,97,0.1)] cursor-pointer shadow-[0_0_0_3px_rgba(201,169,97,0.08),0_6px_20px_rgba(201,169,97,0.25)] animate-pulse"
+                          : "border-2 border-dashed border-[rgba(208,190,165,0.18)] bg-[rgba(255,244,227,0.02)] hover:border-[rgba(208,190,165,0.28)]"
+                      )}
+                      style={isValid ? { background: hex } : {}}
+                      disabled={!isValid && pickedIdx === null}
+                    >
+                      {/* Empty + idle: plus icon */}
+                      {!isValid && !canFill && (
+                        <span
+                          aria-hidden
+                          className="absolute inset-0 flex items-center justify-center text-[#D0BEA5]/25 group-hover:text-[#D0BEA5]/50 transition-colors"
+                        >
+                          <Plus className="size-5" strokeWidth={1.5} />
+                        </span>
+                      )}
+
+                      {/* Empty + can-fill: ghost preview of picked color + "Drop" label */}
+                      {canFill && pickedHex && (
+                        <>
+                          <span
+                            aria-hidden
+                            className="absolute inset-2 rounded-lg opacity-45"
+                            style={{ background: pickedHex }}
+                          />
+                          <span
+                            aria-hidden
+                            className="absolute inset-0 flex flex-col items-center justify-center gap-0.5"
+                          >
+                            <Plus
+                              className="size-4 text-[#FFF4E3] drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+                              strokeWidth={2.5}
+                            />
+                            <span className="text-[8px] tracking-[0.2em] uppercase font-bold text-[#FFF4E3] drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
+                              Drop
+                            </span>
+                          </span>
+                        </>
+                      )}
+
+                      {/* Filled: hover reveals "Clear" */}
+                      {isValid && (
+                        <span
+                          aria-hidden
+                          className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/0 group-hover:bg-black/30 transition-colors"
+                        >
+                          <span className="text-[9px] tracking-[0.18em] uppercase font-semibold text-[#FFF4E3] opacity-0 group-hover:opacity-100 transition-opacity">
+                            Clear
+                          </span>
+                        </span>
+                      )}
+                    </button>
+                    <div className="text-center space-y-1">
+                      <p
+                        className={cn(
+                          "text-[8px] font-medium tracking-[0.18em] uppercase transition-colors",
+                          canFill
+                            ? "text-[#C9A961]"
+                            : "text-[#D0BEA5]/55"
+                        )}
+                      >
+                        {canFill ? `Drop as ${currentLabels[i]}` : currentLabels[i]}
+                      </p>
+                      <code className="block text-[10px] font-mono text-[#FFF4E3]/70 tracking-wide min-h-[14px]">
+                        {isValid ? hex.toUpperCase() : "—"}
+                      </code>
+                      {badge && (
+                        <span
+                          title={`Best text contrast ${badge.ratio}:1 vs ${
+                            badge.onWhite ? "white" : "black"
+                          }`}
+                          className={cn(
+                            "inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold leading-none tracking-wide",
+                            badge.grade !== "FAIL"
+                              ? "bg-[rgba(168,200,150,0.18)] text-[#A8C896] border border-[rgba(168,200,150,0.35)]"
+                              : "bg-[rgba(220,120,100,0.15)] text-[#E89178] border border-[rgba(220,120,100,0.3)]"
+                          )}
+                        >
+                          {badge.ratio}:1 {badge.grade}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Manual mode: direct hex inputs ── */}
+      {mode === "manual" && (
+        <div className="space-y-3">
+          <p className="text-[10px] font-medium tracking-[0.2em] uppercase text-[#D0BEA5]/60">
+            Your colors
+          </p>
+          <div
+            className="grid gap-2.5"
+            style={{
+              gridTemplateColumns: `repeat(${currentLabels.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {currentLabels.map((label, i) => {
+              const raw = manualColors[i] ?? "";
+              const isValid = /^#[0-9a-fA-F]{6}$/.test(raw);
+              const hasValue = raw.length > 0;
+              const invalid = hasValue && !isValid;
+              const badge = isValid ? badgeFor(raw) : null;
+              return (
+                <div key={i} className="space-y-2 animate-in fade-in duration-300">
+                  <div
+                    className={cn(
+                      "relative w-full h-20 rounded-xl transition-all duration-300",
+                      isValid
+                        ? "border border-[rgba(208,190,165,0.15)] shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,244,227,0.1)]"
+                        : "border-2 border-dashed border-[rgba(208,190,165,0.18)] bg-[rgba(255,244,227,0.02)]"
+                    )}
+                    style={isValid ? { background: raw } : {}}
+                  />
+                  <div className="text-center space-y-1">
+                    <p className="text-[8px] font-medium tracking-[0.18em] uppercase text-[#D0BEA5]/50">
+                      {label}
+                    </p>
+                    <input
+                      type="text"
+                      value={raw}
+                      onChange={(e) => handleManualChange(i, e.target.value)}
+                      aria-invalid={invalid}
+                      className={cn(
+                        "w-full h-7 px-1.5 rounded-md bg-[rgba(255,244,227,0.03)] border text-[10px] font-mono uppercase text-[#FFF4E3] text-center transition-all focus:outline-none",
+                        invalid
+                          ? "border-[rgba(220,120,100,0.5)] focus:border-[rgba(220,120,100,0.7)] focus:ring-1 focus:ring-[rgba(220,120,100,0.3)]"
+                          : "border-[rgba(208,190,165,0.12)] focus:border-[rgba(208,190,165,0.55)] focus:ring-1 focus:ring-[rgba(208,190,165,0.18)]"
+                      )}
+                      placeholder="#______"
+                      maxLength={7}
+                    />
+                    {invalid && (
+                      <span className="block text-[9px] text-[#E89178]/85 leading-tight">
+                        Invalid hex
+                      </span>
+                    )}
+                    {badge && (
+                      <span
+                        title={`Best text contrast ${badge.ratio}:1 vs ${
+                          badge.onWhite ? "white" : "black"
+                        }`}
+                        className={cn(
+                          "inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold leading-none tracking-wide",
+                          badge.grade !== "FAIL"
+                            ? "bg-[rgba(168,200,150,0.18)] text-[#A8C896] border border-[rgba(168,200,150,0.35)]"
+                            : "bg-[rgba(220,120,100,0.15)] text-[#E89178] border border-[rgba(220,120,100,0.3)]"
+                        )}
+                      >
+                        {badge.ratio}:1 {badge.grade}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

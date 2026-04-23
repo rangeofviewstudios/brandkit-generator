@@ -561,20 +561,6 @@ ${navCSS}
   background: rgba(0,0,0,0.04);
   box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
 }
-.type-edit-hint {
-  position: absolute;
-  top: -18px;
-  right: 0;
-  font-size: 8px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  opacity: 0;
-  font-family: var(--font-body);
-  pointer-events: none;
-  transition: opacity 0.2s;
-}
-.type-cell:hover .type-edit-hint { opacity: 0.4; }
-.type-sample-wrap:focus-within .type-edit-hint { opacity: 0; }
 
 /* ── COLOR PALETTE ── */
 .color-grid {
@@ -841,6 +827,10 @@ ${navCSS}
   .type-grid { grid-template-columns: 1fr; }
   .voice-examples { grid-template-columns: 1fr; }
   .footer { flex-direction: column; gap: 12px; padding: 32px; }
+  .font-info-row { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .font-info-left { width: 100%; }
+  .font-download-btn { align-self: stretch; justify-content: center; }
+  .swatch-footer { flex-wrap: wrap; gap: 6px; }
 }
 
 /* ── PRINT ── */

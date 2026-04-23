@@ -161,8 +161,7 @@ function generateTypographySection(
           </button>
         </div>
         <div class="type-sample-wrap">
-          <div class="${fontClass}" style="${style}" contenteditable="true" spellcheck="false" data-default="${esc(entry.sampleText)}">${esc(entry.sampleText)}</div>
-          <span class="type-edit-hint">Click to edit</span>
+          <div class="${fontClass}" style="${style}" contenteditable="true" spellcheck="false" data-default="${esc(entry.sampleText)}" title="Click to edit">${esc(entry.sampleText)}</div>
         </div>
         <div class="type-meta">${entry.fontSize} / ${entry.fontWeight} / ${entry.lineHeight}</div>
       </div>`;
