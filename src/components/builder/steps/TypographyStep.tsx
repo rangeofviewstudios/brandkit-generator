@@ -6,6 +6,7 @@ import { useBrandKitStore } from "@/lib/store";
 import { Upload, X, ChevronDown, Check, Sliders } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FontDefinition } from "@/lib/types";
+import { resolveSampleText } from "@/lib/utils/sampleText";
 import React from "react";
 
 // Curated suggestion pools — rendered inside each slot's dropdown so users
@@ -74,8 +75,14 @@ function detectFontFormat(filename: string): "woff2" | "woff" | "ttf" | "otf" {
 
 export default function TypographyStep() {
   const typography = useBrandKitStore((s) => s.data.typography);
+  const brandInfo = useBrandKitStore((s) => s.data.brandInfo);
   const setTypography = useBrandKitStore((s) => s.setTypography);
   const updateScaleEntry = useBrandKitStore((s) => s.updateScaleEntry);
+
+  const previewHeadline = brandInfo.name.trim() || "Brand Headline";
+  const previewBody = brandInfo.tagline.trim()
+    ? `${brandInfo.tagline}. Body text flows here, readable and expressive — how your brand speaks at paragraph level.`
+    : "Body text flows here, readable and expressive. This is how your brand speaks at paragraph level across all materials and touchpoints.";
 
   const [scaleOpen, setScaleOpen] = useState(false);
 
@@ -138,7 +145,7 @@ export default function TypographyStep() {
             fontWeight: 600,
           }}
         >
-          Brand Headline
+          {previewHeadline}
         </p>
         <p
           className="text-sm text-[#FFF4E3]/65 leading-relaxed"
@@ -147,8 +154,7 @@ export default function TypographyStep() {
             fontWeight: 300,
           }}
         >
-          Body text flows here, readable and expressive. This is how your brand
-          speaks at paragraph level across all materials and touchpoints.
+          {previewBody}
         </p>
         <div className="mt-3 pt-3 border-t border-[rgba(208,190,165,0.08)] flex items-center justify-between">
           <span
@@ -272,7 +278,7 @@ export default function TypographyStep() {
                             textTransform: entry.textTransform as React.CSSProperties["textTransform"],
                           }}
                         >
-                          {entry.sampleText || entry.label}
+                          {resolveSampleText(entry, brandInfo) || entry.label}
                         </div>
                       </div>
 

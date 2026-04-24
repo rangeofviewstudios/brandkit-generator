@@ -1,6 +1,7 @@
 import WizardShell from "@/components/builder/WizardShell";
 import PreviewFrame from "@/components/preview/PreviewFrame";
 import StepTransition from "@/components/builder/StepTransition";
+import PersistGate from "@/components/builder/PersistGate";
 
 export default function BuilderLayout({
   children,
@@ -9,6 +10,7 @@ export default function BuilderLayout({
 }) {
   return (
     <div className="flex h-screen">
+      <PersistGate />
       {/* Left: Wizard */}
       <div className="w-[480px] min-w-[420px] border-r border-[rgba(201,169,97,0.1)] flex flex-col bg-[#1F0F08] relative z-10 overflow-hidden">
         {/* ── Bottom-left atmospheric splashes — expensive editorial lighting ── */}

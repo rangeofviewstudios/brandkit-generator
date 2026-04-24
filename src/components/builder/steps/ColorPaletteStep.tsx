@@ -5,7 +5,7 @@ import { v4 as uuid } from "uuid";
 import Wheel from "@uiw/react-color-wheel";
 import { hsvaToHex, hexToHsva, type HsvaColor } from "@uiw/color-convert";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, ArrowDown, Wand2 } from "lucide-react";
+import { Plus, X, ArrowDown, Wand2, Pipette, Sparkles } from "lucide-react";
 import { useBrandKitStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import {
@@ -15,6 +15,9 @@ import {
   wcagGrade,
   type OklchColor,
 } from "@/lib/utils/colorUtils";
+import { extractDominantColors } from "@/lib/utils/logoColors";
+import LogoEyedropper from "@/components/builder/LogoEyedropper";
+import { useToast } from "@/hooks/useToast";
 
 // ──────────────────────────────────────────────────────────────
 // Types
@@ -236,11 +239,15 @@ const HARMONIES: { id: Harmony; label: string }[] = [
 export default function ColorPaletteStep() {
   const storeSwatches = useBrandKitStore((s) => s.data.colors.swatches);
   const reorderColors = useBrandKitStore((s) => s.reorderColors);
+  const firstLogo = useBrandKitStore((s) => s.data.logos.variants[0]);
+  const pushToast = useToast((s) => s.push);
 
   const [mode, setMode] = useState<Mode>("assisted");
   const [baseColor, setBaseColor] = useState<string>("#EA9A61");
   const [hsva, setHsva] = useState<HsvaColor>(hexToHsva("#EA9A61"));
   const [harmony, setHarmony] = useState<Harmony>("complementary");
+  const [eyedropperOpen, setEyedropperOpen] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [manualColors, setManualColors] = useState<string[]>([
     "",
     "",
@@ -351,10 +358,69 @@ export default function ColorPaletteStep() {
     setBaseColor(hsvaToHex(color.hsva).toUpperCase());
   };
 
+  // Accept any pasted color: "#fff", "fff", "#FFFFFF", "FFFFFF",
+  // "rgb(255, 255, 255)" — normalize to #RRGGBB.
+  const normalizeHex = (raw: string): string | null => {
+    const s = raw.trim().replace(/^["']|["']$/g, "");
+    const rgbMatch = s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (rgbMatch) {
+      const [r, g, b] = [rgbMatch[1], rgbMatch[2], rgbMatch[3]].map((n) =>
+        Math.max(0, Math.min(255, parseInt(n, 10)))
+      );
+      const h = (n: number) => n.toString(16).padStart(2, "0");
+      return `#${h(r)}${h(g)}${h(b)}`.toUpperCase();
+    }
+    const hex = s.replace(/^#/, "");
+    if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+      // Expand #abc -> #aabbcc
+      return `#${hex
+        .split("")
+        .map((c) => c + c)
+        .join("")}`.toUpperCase();
+    }
+    if (/^[0-9a-fA-F]{6}$/.test(hex)) return `#${hex}`.toUpperCase();
+    return null;
+  };
+
+  const applyHex = (hex: string) => {
+    setBaseColor(hex);
+    setHsva(hexToHsva(hex));
+  };
+
   const handleHexChange = (val: string) => {
     setBaseColor(val);
     if (/^#[0-9a-fA-F]{6}$/.test(val)) {
       setHsva(hexToHsva(val));
+    }
+  };
+
+  const handleHexPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    const normalized = normalizeHex(text);
+    if (normalized) {
+      e.preventDefault();
+      applyHex(normalized);
+    }
+  };
+
+  const handleExtractFromLogo = async () => {
+    if (!firstLogo) return;
+    setExtracting(true);
+    try {
+      const colors = await extractDominantColors(firstLogo.file, paletteSlots.length);
+      if (colors.length === 0) {
+        pushToast("No distinct colors found in logo", "info");
+        return;
+      }
+      // Drop into base color + auto-fill the palette slots
+      applyHex(colors[0]);
+      setPaletteSlots((prev) =>
+        prev.map((existing, i) => colors[i] ?? existing)
+      );
+      setPickedIdx(null);
+      pushToast(`Extracted ${colors.length} color${colors.length > 1 ? "s" : ""} from logo ✓`, "success");
+    } finally {
+      setExtracting(false);
     }
   };
 
@@ -452,9 +518,10 @@ export default function ColorPaletteStep() {
                     type="text"
                     value={baseColor}
                     onChange={(e) => handleHexChange(e.target.value)}
+                    onPaste={handleHexPaste}
                     className="w-full h-10 px-3 rounded-lg bg-[rgba(255,244,227,0.03)] border border-[rgba(208,190,165,0.12)] text-sm font-mono uppercase text-[#FFF4E3] shadow-[inset_0_1px_0_rgba(255,244,227,0.04)] transition-all focus:outline-none focus:border-[rgba(208,190,165,0.55)] focus:bg-[rgba(255,244,227,0.05)] focus:ring-2 focus:ring-[rgba(208,190,165,0.18)]"
-                    placeholder="#000000"
-                    maxLength={7}
+                    placeholder="#000000 · paste hex/rgb"
+                    maxLength={20}
                   />
                 </div>
                 <div
@@ -463,6 +530,31 @@ export default function ColorPaletteStep() {
                 />
               </div>
             </div>
+
+            {/* From-logo actions — only when a logo exists */}
+            {firstLogo && (
+              <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[rgba(208,190,165,0.08)]">
+                <button
+                  type="button"
+                  onClick={() => setEyedropperOpen(true)}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-[10px] tracking-[0.15em] uppercase font-semibold text-[#D0BEA5] bg-[rgba(208,190,165,0.06)] hover:bg-[rgba(208,190,165,0.12)] border border-[rgba(208,190,165,0.18)] transition-colors"
+                  title="Click any pixel of your logo to sample its color"
+                >
+                  <Pipette className="size-3.5" />
+                  Pick from logo
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExtractFromLogo}
+                  disabled={extracting}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-[10px] tracking-[0.15em] uppercase font-semibold text-[#C9A961] bg-[rgba(201,169,97,0.08)] hover:bg-[rgba(201,169,97,0.18)] border border-[rgba(201,169,97,0.3)] transition-colors disabled:opacity-50 disabled:cursor-wait"
+                  title="Auto-fill the palette with dominant colors from your logo"
+                >
+                  <Sparkles className="size-3.5" />
+                  {extracting ? "Extracting…" : "Extract palette"}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Harmony Selector */}
@@ -812,6 +904,18 @@ export default function ColorPaletteStep() {
             })}
           </div>
         </div>
+      )}
+
+      {firstLogo && (
+        <LogoEyedropper
+          src={firstLogo.file}
+          open={eyedropperOpen}
+          onClose={() => setEyedropperOpen(false)}
+          onPick={(hex) => {
+            applyHex(hex);
+            pushToast(`${hex} sampled from logo ✓`, "success");
+          }}
+        />
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import type { BrandKitData, SectionConfig } from "../types";
 import { isLightColor } from "../utils/color-utils";
+import { resolveSampleText } from "../utils/sampleText";
 
 function esc(str: string): string {
   return str
@@ -148,6 +149,7 @@ function generateTypographySection(
       const fontClass =
         entry.fontFamily === "display" ? "type-display" : "type-body-display";
       const style = `font-size:${entry.fontSize};font-weight:${entry.fontWeight};letter-spacing:${entry.letterSpacing};line-height:${entry.lineHeight};${entry.textTransform !== "none" ? `text-transform:${entry.textTransform};` : ""}`;
+      const sample = resolveSampleText(entry, data.brandInfo);
 
       return `
       <div class="type-cell" data-cell-id="${i}">
@@ -161,7 +163,7 @@ function generateTypographySection(
           </button>
         </div>
         <div class="type-sample-wrap">
-          <div class="${fontClass}" style="${style}" contenteditable="true" spellcheck="false" data-default="${esc(entry.sampleText)}" title="Click to edit">${esc(entry.sampleText)}</div>
+          <div class="${fontClass}" style="${style}" contenteditable="true" spellcheck="false" data-default="${esc(sample)}" title="Click to edit">${esc(sample)}</div>
         </div>
         <div class="type-meta">${entry.fontSize} / ${entry.fontWeight} / ${entry.lineHeight}</div>
       </div>`;

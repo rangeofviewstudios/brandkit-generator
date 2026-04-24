@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
   BrandKitData,
   BrandInfo,
@@ -157,7 +158,8 @@ interface BrandKitStore {
 }
 
 export const useBrandKitStore = create<BrandKitStore>()(
-  immer((set) => ({
+  persist(
+    immer((set) => ({
     data: DEFAULT_DATA,
     currentStep: 0,
 
@@ -278,5 +280,15 @@ export const useBrandKitStore = create<BrandKitStore>()(
         if (partial.gradients) state.data.gradients = partial.gradients;
         if (partial.voice) state.data.voice = partial.voice;
       }),
-  }))
+  })),
+    {
+      name: 'brandkit:state:v1',
+      version: 1,
+      storage: createJSONStorage(() => localStorage),
+      // Persist the kit data only — currentStep is derived from URL.
+      partialize: (state) => ({ data: state.data }),
+      // Hydrate manually after mount via <PersistGate /> to avoid SSR mismatch.
+      skipHydration: true,
+    }
+  )
 );
